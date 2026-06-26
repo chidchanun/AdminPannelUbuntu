@@ -14,7 +14,9 @@ async function loadPamAuthenticator() {
     const runtimeImport = new Function("packageName", "return import(packageName)");
 
     return await runtimeImport(packageName);
-  } catch {
+  } catch (error) {
+    console.error("Unable to load authenticate-pam:", error);
+
     return null;
   }
 }
@@ -28,6 +30,10 @@ async function authenticateUbuntuUser(username, password) {
   const authenticate = pamModule?.default?.authenticate ?? pamModule?.authenticate;
 
   if (!authenticate) {
+    console.error(
+      "PAM authentication is not configured. Install authenticate-pam on the Ubuntu server.",
+    );
+
     return { ok: false, reason: "pam" };
   }
 

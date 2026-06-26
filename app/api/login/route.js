@@ -63,22 +63,38 @@ function shouldUseSecureCookie(request) {
   return new URL(request.url).protocol === "https:";
 }
 
+function getPublicUrl(request, pathname) {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = forwardedHost || request.headers.get("host");
+  const fallbackUrl = new URL(pathname, request.url);
+
+  if (!host) {
+    return fallbackUrl;
+  }
+
+  const proto =
+    forwardedProto?.split(",")[0].trim() || fallbackUrl.protocol.replace(":", "");
+
+  return new URL(pathname, `${proto}://${host}`);
+}
+
 export async function POST(request) {
   const formData = await request.formData();
   const username = String(formData.get("username") || "").trim();
   const password = String(formData.get("password") || "");
 
   if (!username || !password) {
-    return NextResponse.redirect(new URL("/?error=missing", request.url), 303);
+    return NextResponse.redirect(getPublicUrl(request, "/?error=missing"), 303);
   }
 
   const result = await authenticateUbuntuUser(username, password);
 
   if (!result.ok) {
-    return NextResponse.redirect(new URL(`/?error=${result.reason}`, request.url), 303);
+    return NextResponse.redirect(getPublicUrl(request, `/?error=${result.reason}`), 303);
   }
 
-  const response = NextResponse.redirect(new URL("/dashboard", request.url), 303);
+  const response = NextResponse.redirect(getPublicUrl(request, "/dashboard"), 303);
 
   response.cookies.set({
     name: SESSION_COOKIE,

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 function formatPercent(value) {
@@ -182,19 +183,30 @@ export default function DashboardClient({ username }) {
             </div>
 
             <nav className="mt-9 grid gap-1">
-              {["Overview", "Resources", "Notices", "Settings"].map((item, index) => (
-                <a
-                  className={`rounded-md px-3 py-2.5 text-sm font-semibold transition ${
-                    index === 0
-                      ? "bg-[#e95420] text-white shadow-lg shadow-[#e95420]/20"
-                      : "text-white/66 hover:bg-white/8 hover:text-white"
-                  }`}
-                  href="#"
-                  key={item}
-                >
-                  {item}
-                </a>
-              ))}
+              <Link
+                className="rounded-md bg-[#e95420] px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#e95420]/20"
+                href="/dashboard"
+              >
+                Dashboard
+              </Link>
+              <Link
+                className="rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white"
+                href="/connections"
+              >
+                Connections
+              </Link>
+              <a
+                className="rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white"
+                href="#"
+              >
+                Notices
+              </a>
+              <a
+                className="rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white"
+                href="#"
+              >
+                Settings
+              </a>
             </nav>
 
             <div className="mt-auto rounded-lg border border-white/10 bg-white/[0.04] p-4">

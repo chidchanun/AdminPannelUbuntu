@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createRequire } from "node:module";
 import {
   createSessionValue,
   SESSION_COOKIE,
@@ -6,47 +7,51 @@ import {
 } from "@/lib/auth-session";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-async function loadPamAuthenticator() {
-  const packageName = "authenticate-pam";
+const require = createRequire(import.meta.url);
 
+function loadPamAuthenticator() {
   try {
-    const runtimeImport = new Function("packageName", "return import(packageName)");
-
-    return await runtimeImport(packageName);
+    return require("authenticate-pam");
   } catch (error) {
     console.error("Unable to load authenticate-pam:", error);
-
     return null;
   }
 }
 
-async function authenticateUbuntuUser(username, password) {
+function authenticateUbuntuUser(username, password) {
   if (process.platform !== "linux") {
-    return { ok: false, reason: "platform" };
+    return Promise.resolve({ ok: false, reason: "platform" });
   }
 
-  const pamModule = await loadPamAuthenticator();
-  const authenticate = pamModule?.default?.authenticate ?? pamModule?.authenticate;
+  const pamModule = loadPamAuthenticator();
+  const authenticate = pamModule?.authenticate;
 
   if (!authenticate) {
     console.error(
-      "PAM authentication is not configured. Install authenticate-pam on the Ubuntu server.",
+      "PAM authentication is not configured. Install authenticate-pam on the Ubuntu server."
     );
 
-    return { ok: false, reason: "pam" };
+    return Promise.resolve({ ok: false, reason: "pam" });
   }
 
   return new Promise((resolve) => {
     authenticate(
       username,
       password,
-      {
-        serviceName: process.env.PAM_SERVICE || "login",
-      },
       (error) => {
-        resolve(error ? { ok: false, reason: "invalid" } : { ok: true });
+        if (error) {
+          console.error("PAM login failed:", error);
+          resolve({ ok: false, reason: "invalid" });
+          return;
+        }
+
+        resolve({ ok: true });
       },
+      {
+        serviceName: process.env.PAM_SERVICE || "nextjs",
+      }
     );
   });
 }
@@ -80,27 +85,48 @@ function getPublicUrl(request, pathname) {
   }
 
   const proto =
-    forwardedProto?.split(",")[0].trim() || fallbackUrl.protocol.replace(":", "");
+    forwardedProto?.split(",")[0].trim() ||
+    fallbackUrl.protocol.replace(":", "");
 
   return new URL(pathname, `${proto}://${host}`);
 }
 
 export async function POST(request) {
   const formData = await request.formData();
+
   const username = String(formData.get("username") || "").trim();
   const password = String(formData.get("password") || "");
 
   if (!username || !password) {
-    return NextResponse.redirect(getPublicUrl(request, "/?error=missing"), 303);
+    return NextResponse.redirect(
+      getPublicUrl(request, "/?error=missing"),
+      303
+    );
+  }
+
+  // แนะนำให้จำกัด user ที่ล็อกอินได้
+  const allowedUsers = ["ChidchanunServer"];
+
+  if (!allowedUsers.includes(username)) {
+    return NextResponse.redirect(
+      getPublicUrl(request, "/?error=forbidden"),
+      303
+    );
   }
 
   const result = await authenticateUbuntuUser(username, password);
 
   if (!result.ok) {
-    return NextResponse.redirect(getPublicUrl(request, `/?error=${result.reason}`), 303);
+    return NextResponse.redirect(
+      getPublicUrl(request, `/?error=${result.reason}`),
+      303
+    );
   }
 
-  const response = NextResponse.redirect(getPublicUrl(request, "/dashboard"), 303);
+  const response = NextResponse.redirect(
+    getPublicUrl(request, "/dashboard"),
+    303
+  );
 
   response.cookies.set({
     name: SESSION_COOKIE,

@@ -45,6 +45,24 @@ async function authenticateUbuntuUser(username, password) {
   });
 }
 
+function shouldUseSecureCookie(request) {
+  if (process.env.AUTH_COOKIE_SECURE === "true") {
+    return true;
+  }
+
+  if (process.env.AUTH_COOKIE_SECURE === "false") {
+    return false;
+  }
+
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+
+  if (forwardedProto) {
+    return forwardedProto.split(",")[0].trim() === "https";
+  }
+
+  return new URL(request.url).protocol === "https:";
+}
+
 export async function POST(request) {
   const formData = await request.formData();
   const username = String(formData.get("username") || "").trim();
@@ -66,8 +84,8 @@ export async function POST(request) {
     name: SESSION_COOKIE,
     value: createSessionValue(username),
     httpOnly: true,
-    sameSite: "strict",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    secure: shouldUseSecureCookie(request),
     path: "/",
     maxAge: SESSION_MAX_AGE,
   });

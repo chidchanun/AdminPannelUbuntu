@@ -195,6 +195,12 @@ export default function DashboardClient({ username }) {
               >
                 Connections
               </Link>
+              <Link
+                className="rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white"
+                href="/files"
+              >
+                Files
+              </Link>
               <a
                 className="rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white"
                 href="#"

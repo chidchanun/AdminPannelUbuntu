@@ -102,6 +102,12 @@ export default function ConnectionsClient({ username }) {
               >
                 Connections
               </Link>
+              <Link
+                className="rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white"
+                href="/files"
+              >
+                Files
+              </Link>
             </nav>
 
             <div className="mt-auto rounded-lg border border-white/10 bg-white/[0.04] p-4">
@@ -182,45 +188,56 @@ export default function ConnectionsClient({ username }) {
                 <StatusMessage title="Auth attempt check unavailable" message={data.failed.error} />
               ) : null}
 
-              <section className="grid gap-6 xl:grid-cols-2">
-                <div className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
-                  <div className="mb-4 flex items-center justify-between gap-4">
-                    <h2 className="text-xl font-bold tracking-normal">Active IPs</h2>
-                    <span className="text-sm text-white/50">
-                      {data?.updatedAt ? new Date(data.updatedAt).toLocaleTimeString() : "Not updated"}
-                    </span>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    {activeRows.length > 0 ? (
-                      <table className="w-full min-w-[560px] text-left text-sm">
-                        <thead className="text-white/48">
-                          <tr className="border-b border-white/10">
-                            <th className="pb-3 font-semibold">Remote IP</th>
-                            <th className="pb-3 font-semibold">Total</th>
-                            <th className="pb-3 font-semibold">ESTAB</th>
-                            <th className="pb-3 font-semibold">SYN</th>
-                            <th className="pb-3 font-semibold">Local ports</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {activeRows.map((row) => (
-                            <tr className="border-b border-white/8" key={row.ip}>
-                              <td className="py-3 font-semibold text-white">{row.ip}</td>
-                              <td className="py-3 text-white/70">{row.total}</td>
-                              <td className="py-3 text-white/70">{row.established}</td>
-                              <td className="py-3 text-white/70">{row.synReceived}</td>
-                              <td className="py-3 text-white/70">{row.ports.join(", ")}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <EmptyState>No active external TCP connections found.</EmptyState>
-                    )}
-                  </div>
+              <section className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <h2 className="text-xl font-bold tracking-normal">Active IPs</h2>
+                  <span className="text-sm text-white/50">
+                    {data?.updatedAt ? new Date(data.updatedAt).toLocaleTimeString() : "Not updated"}
+                  </span>
                 </div>
 
+                <div className="overflow-x-auto rounded-md border border-white/10">
+                  {activeRows.length > 0 ? (
+                    <table className="w-full min-w-[860px] table-fixed text-left text-sm">
+                      <colgroup>
+                        <col className="w-[34%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[30%]" />
+                      </colgroup>
+                      <thead className="bg-black/24 text-white/48">
+                        <tr className="border-b border-white/10">
+                          <th className="px-4 py-3 font-semibold">Remote IP</th>
+                          <th className="px-4 py-3 font-semibold">Total</th>
+                          <th className="px-4 py-3 font-semibold">ESTAB</th>
+                          <th className="px-4 py-3 font-semibold">SYN</th>
+                          <th className="px-4 py-3 font-semibold">Local ports</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeRows.map((row) => (
+                          <tr className="border-b border-white/8 last:border-0" key={row.ip}>
+                            <td className="break-all px-4 py-3 font-semibold text-white">
+                              {row.ip}
+                            </td>
+                            <td className="px-4 py-3 text-white/70">{row.total}</td>
+                            <td className="px-4 py-3 text-white/70">{row.established}</td>
+                            <td className="px-4 py-3 text-white/70">{row.synReceived}</td>
+                            <td className="break-words px-4 py-3 text-white/70">
+                              {row.ports.join(", ")}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <EmptyState>No active external TCP connections found.</EmptyState>
+                  )}
+                </div>
+              </section>
+
+              <section className="grid gap-6 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
                 <div className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
                   <div className="mb-4 flex items-center justify-between gap-4">
                     <h2 className="text-xl font-bold tracking-normal">Failed Login Sources</h2>
@@ -229,7 +246,7 @@ export default function ConnectionsClient({ username }) {
 
                   <div className="overflow-x-auto">
                     {failedRows.length > 0 ? (
-                      <table className="w-full min-w-[520px] text-left text-sm">
+                      <table className="w-full min-w-[620px] text-left text-sm">
                         <thead className="text-white/48">
                           <tr className="border-b border-white/10">
                             <th className="pb-3 font-semibold">Remote IP</th>
@@ -240,9 +257,13 @@ export default function ConnectionsClient({ username }) {
                         <tbody>
                           {failedRows.map((row) => (
                             <tr className="border-b border-white/8" key={row.ip}>
-                              <td className="py-3 font-semibold text-white">{row.ip}</td>
+                              <td className="break-all py-3 pr-4 font-semibold text-white">
+                                {row.ip}
+                              </td>
                               <td className="py-3 text-white/70">{row.total}</td>
-                              <td className="py-3 text-white/70">{row.users.join(", ")}</td>
+                              <td className="break-words py-3 text-white/70">
+                                {row.users.join(", ")}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -250,6 +271,35 @@ export default function ConnectionsClient({ username }) {
                     ) : (
                       <EmptyState>No failed login sources found in the current window.</EmptyState>
                     )}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                  <div className="mb-4 flex items-center justify-between gap-4">
+                    <h2 className="text-xl font-bold tracking-normal">Failed Login Sources</h2>
+                    <span className="text-sm text-white/50">Last 24 hours</span>
+                  </div>
+
+                  <div className="grid gap-3">
+                    {(data?.failed?.attempts || []).slice(0, 6).map((attempt, index) => (
+                      <div
+                        className="rounded-md border border-white/10 bg-black/20 px-4 py-3"
+                        key={`${attempt.ip}-${index}`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <p className="break-all font-semibold text-white">{attempt.ip}</p>
+                          <span className="rounded-full bg-[#e95420]/18 px-3 py-1 text-xs font-bold text-[#ffb088]">
+                            {attempt.user}
+                          </span>
+                        </div>
+                        <p className="mt-2 break-words text-sm leading-6 text-white/58">
+                          {attempt.message}
+                        </p>
+                      </div>
+                    ))}
+                    {(data?.failed?.attempts || []).length === 0 ? (
+                      <EmptyState>No recent failed login rows available.</EmptyState>
+                    ) : null}
                   </div>
                 </div>
               </section>

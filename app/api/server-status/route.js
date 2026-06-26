@@ -9,6 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_MONITORED_SERVICES = ["ssh", "nginx", "mysql"];
 
 function readCpuSnapshot() {
   return os.cpus().reduce(
@@ -90,7 +91,206 @@ async function getTemperature() {
   }
 }
 
-function buildNotices({ cpuPercent, memoryPercent, disk, temperature }) {
+function parseServiceNames() {
+  return (process.env.MONITORED_SERVICES || DEFAULT_MONITORED_SERVICES.join(","))
+    .split(",")
+    .map((service) => service.trim())
+    .filter(Boolean);
+}
+
+async function getServiceStatus() {
+  const services = parseServiceNames();
+
+  if (process.platform !== "linux") {
+    return {
+      checked: false,
+      services: [],
+      error: "Service checks require Linux/systemd.",
+    };
+  }
+
+  const results = await Promise.all(
+    services.map(async (name) => {
+      try {
+        const { stdout } = await execFileAsync("systemctl", [
+          "is-active",
+          name,
+        ]);
+
+        return {
+          name,
+          state: stdout.trim() || "unknown",
+          ok: stdout.trim() === "active",
+        };
+      } catch (error) {
+        const state = String(error.stdout || "").trim() || "failed";
+
+        return {
+          name,
+          state,
+          ok: false,
+        };
+      }
+    }),
+  );
+
+  return {
+    checked: true,
+    services: results,
+    error: null,
+  };
+}
+
+async function getFailedSystemdUnits() {
+  if (process.platform !== "linux") {
+    return {
+      checked: false,
+      units: [],
+      error: "Systemd failed-unit checks require Linux.",
+    };
+  }
+
+  try {
+    const { stdout } = await execFileAsync("systemctl", [
+      "--failed",
+      "--no-legend",
+      "--plain",
+    ]);
+
+    const units = stdout
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        const [name, load, active, sub, ...description] = line.split(/\s+/);
+
+        return {
+          name,
+          load,
+          active,
+          sub,
+          description: description.join(" "),
+        };
+      });
+
+    return {
+      checked: true,
+      units,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      checked: false,
+      units: [],
+      error: error.message,
+    };
+  }
+}
+
+async function getConnectionStatus() {
+  if (process.platform !== "linux") {
+    return {
+      checked: false,
+      established: 0,
+      synReceived: 0,
+      error: "Connection checks require Linux ss command.",
+    };
+  }
+
+  try {
+    const { stdout } = await execFileAsync("ss", ["-H", "-tan"]);
+    const lines = stdout.trim().split("\n").filter(Boolean);
+
+    return {
+      checked: true,
+      established: lines.filter((line) => line.startsWith("ESTAB")).length,
+      synReceived: lines.filter((line) => line.startsWith("SYN-RECV")).length,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      checked: false,
+      established: 0,
+      synReceived: 0,
+      error: error.message,
+    };
+  }
+}
+
+async function getAuthFailureStatus() {
+  if (process.platform !== "linux") {
+    return {
+      checked: false,
+      failedLogins: 0,
+      error: "Auth log checks require Linux.",
+    };
+  }
+
+  try {
+    const { stdout } = await execFileAsync("journalctl", [
+      "-u",
+      "ssh",
+      "-u",
+      "sshd",
+      "--since",
+      "15 minutes ago",
+      "--no-pager",
+      "-n",
+      "250",
+    ]);
+    const failedLogins = stdout
+      .split("\n")
+      .filter((line) => /Failed password|Invalid user|authentication failure/i.test(line))
+      .length;
+
+    return {
+      checked: true,
+      failedLogins,
+      error: null,
+    };
+  } catch (journalError) {
+    try {
+      const authLog = await fs.readFile("/var/log/auth.log", "utf8");
+      const cutoff = Date.now() - 15 * 60 * 1000;
+      const currentYear = new Date().getFullYear();
+      const failedLogins = authLog
+        .split("\n")
+        .filter((line) => {
+          const rawDate = line.slice(0, 15);
+          const timestamp = Date.parse(`${rawDate} ${currentYear}`);
+
+          return (
+            Number.isFinite(timestamp) &&
+            timestamp >= cutoff &&
+            /Failed password|Invalid user|authentication failure/i.test(line)
+          );
+        }).length;
+
+      return {
+        checked: true,
+        failedLogins,
+        error: null,
+      };
+    } catch (logError) {
+      return {
+        checked: false,
+        failedLogins: 0,
+        error: `${journalError.message}; ${logError.message}`,
+      };
+    }
+  }
+}
+
+function buildNotices({
+  cpuPercent,
+  memoryPercent,
+  disk,
+  temperature,
+  serviceStatus,
+  failedUnits,
+  connectionStatus,
+  authFailureStatus,
+}) {
   const notices = [];
 
   if (cpuPercent >= 85) {
@@ -131,6 +331,87 @@ function buildNotices({ cpuPercent, memoryPercent, disk, temperature }) {
     });
   }
 
+  if (serviceStatus?.checked) {
+    const failedServices = serviceStatus.services.filter((service) => !service.ok);
+
+    if (failedServices.length > 0) {
+      notices.push({
+        level: "critical",
+        title: "Service failure",
+        message: `${failedServices
+          .map((service) => `${service.name} (${service.state})`)
+          .join(", ")} need attention.`,
+      });
+    }
+  } else if (serviceStatus?.error) {
+    notices.push({
+      level: "warning",
+      title: "Service check unavailable",
+      message: serviceStatus.error,
+    });
+  }
+
+  if (failedUnits?.checked && failedUnits.units.length > 0) {
+    notices.push({
+      level: "critical",
+      title: "Failed systemd units",
+      message: failedUnits.units
+        .slice(0, 4)
+        .map((unit) => unit.name)
+        .join(", "),
+    });
+  } else if (failedUnits?.error) {
+    notices.push({
+      level: "warning",
+      title: "Systemd check unavailable",
+      message: failedUnits.error,
+    });
+  }
+
+  if (connectionStatus?.checked) {
+    if (connectionStatus.synReceived >= 50) {
+      notices.push({
+        level: "critical",
+        title: "Possible connection flood",
+        message: `${connectionStatus.synReceived} half-open TCP connections detected.`,
+      });
+    } else if (connectionStatus.established >= 500) {
+      notices.push({
+        level: "warning",
+        title: "High connection count",
+        message: `${connectionStatus.established} established TCP connections detected.`,
+      });
+    }
+  } else if (connectionStatus?.error) {
+    notices.push({
+      level: "warning",
+      title: "Connection check unavailable",
+      message: connectionStatus.error,
+    });
+  }
+
+  if (authFailureStatus?.checked) {
+    if (authFailureStatus.failedLogins >= 20) {
+      notices.push({
+        level: "critical",
+        title: "Possible brute-force activity",
+        message: `${authFailureStatus.failedLogins} failed login attempts in the last 15 minutes.`,
+      });
+    } else if (authFailureStatus.failedLogins >= 5) {
+      notices.push({
+        level: "warning",
+        title: "Repeated failed logins",
+        message: `${authFailureStatus.failedLogins} failed login attempts in the last 15 minutes.`,
+      });
+    }
+  } else if (authFailureStatus?.error) {
+    notices.push({
+      level: "warning",
+      title: "Auth log check unavailable",
+      message: authFailureStatus.error,
+    });
+  }
+
   if (notices.length === 0) {
     notices.push({
       level: "ok",
@@ -149,10 +430,22 @@ export async function GET(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [cpuPercent, disk, temperature] = await Promise.all([
+  const [
+    cpuPercent,
+    disk,
+    temperature,
+    serviceStatus,
+    failedUnits,
+    connectionStatus,
+    authFailureStatus,
+  ] = await Promise.all([
     getCpuUsage(),
     getDiskUsage(),
     getTemperature(),
+    getServiceStatus(),
+    getFailedSystemdUnits(),
+    getConnectionStatus(),
+    getAuthFailureStatus(),
   ]);
 
   const totalMemory = os.totalmem();
@@ -180,6 +473,12 @@ export async function GET(request) {
     },
     disk,
     temperature,
+    checks: {
+      services: serviceStatus,
+      failedUnits,
+      connections: connectionStatus,
+      authFailures: authFailureStatus,
+    },
   };
 
   return NextResponse.json({
@@ -189,6 +488,10 @@ export async function GET(request) {
       memoryPercent,
       disk,
       temperature,
+      serviceStatus,
+      failedUnits,
+      connectionStatus,
+      authFailureStatus,
     }),
   });
 }

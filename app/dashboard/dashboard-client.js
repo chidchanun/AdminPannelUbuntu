@@ -303,6 +303,67 @@ export default function DashboardClient({ username }) {
                     ))}
                   </div>
                 </section>
+
+                <section className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                    <h2 className="text-xl font-bold tracking-normal">Service Status</h2>
+                    <div className="mt-4 grid gap-3">
+                      {(status?.checks?.services?.services || []).length > 0 ? (
+                        status.checks.services.services.map((service) => (
+                          <div
+                            className="flex items-center justify-between gap-3 rounded-md bg-black/20 px-4 py-3"
+                            key={service.name}
+                          >
+                            <span className="font-semibold">{service.name}</span>
+                            <span
+                              className={`rounded-full px-3 py-1 text-sm font-bold ${
+                                service.ok
+                                  ? "bg-emerald-400/12 text-emerald-200"
+                                  : "bg-[#e95420]/18 text-[#ffb088]"
+                              }`}
+                            >
+                              {service.state}
+                            </span>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm leading-6 text-white/58">
+                          Service checks are unavailable or not configured.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                    <h2 className="text-xl font-bold tracking-normal">Security Signals</h2>
+                    <div className="mt-4 grid gap-3">
+                      <div className="rounded-md bg-black/20 p-4">
+                        <p className="text-sm text-white/54">Failed logins / 15 minutes</p>
+                        <p className="mt-1 text-2xl font-bold">
+                          {status?.checks?.authFailures?.checked
+                            ? status.checks.authFailures.failedLogins
+                            : "N/A"}
+                        </p>
+                      </div>
+                      <div className="rounded-md bg-black/20 p-4">
+                        <p className="text-sm text-white/54">SYN received connections</p>
+                        <p className="mt-1 text-2xl font-bold">
+                          {status?.checks?.connections?.checked
+                            ? status.checks.connections.synReceived
+                            : "N/A"}
+                        </p>
+                      </div>
+                      <div className="rounded-md bg-black/20 p-4">
+                        <p className="text-sm text-white/54">Established connections</p>
+                        <p className="mt-1 text-2xl font-bold">
+                          {status?.checks?.connections?.checked
+                            ? status.checks.connections.established
+                            : "N/A"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
               </div>
 
               <aside className="grid content-start gap-6">

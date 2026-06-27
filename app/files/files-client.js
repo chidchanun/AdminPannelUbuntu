@@ -124,8 +124,12 @@ function EntryIcon({ type }) {
 export default function FilesClient({ initialPath, username }) {
   const [data, setData] = useState(null);
   const [pathInput, setPathInput] = useState(initialPath || "");
+  const [createName, setCreateName] = useState("");
+  const [createType, setCreateType] = useState("file");
   const [error, setError] = useState(null);
+  const [message, setMessage] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
 
   const loadDirectory = useCallback(async (nextPath = "") => {
     setIsLoading(true);
@@ -142,6 +146,7 @@ export default function FilesClient({ initialPath, username }) {
       setData(payload);
       setPathInput(payload.path);
       setError(null);
+      setMessage(null);
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -160,6 +165,46 @@ export default function FilesClient({ initialPath, username }) {
   function submitPath(event) {
     event.preventDefault();
     loadDirectory(pathInput);
+  }
+
+  async function createEntry(event) {
+    event.preventDefault();
+
+    if (!data?.path) {
+      setError("Open a directory before creating files or folders.");
+      return;
+    }
+
+    setIsCreating(true);
+
+    try {
+      const response = await fetch("/api/files", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          directory: data.path,
+          name: createName,
+          type: createType,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Files API returned ${response.status}`);
+      }
+
+      setCreateName("");
+      setMessage(`${createType === "directory" ? "Folder" : "File"} created.`);
+      setError(null);
+      await loadDirectory(data.path);
+    } catch (createError) {
+      setError(createError.message);
+      setMessage(null);
+    } finally {
+      setIsCreating(false);
+    }
   }
 
   return (
@@ -245,6 +290,49 @@ export default function FilesClient({ initialPath, username }) {
                 </section>
               ) : null}
 
+              {message ? (
+                <section className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4">
+                  <p className="text-sm font-semibold text-emerald-100">{message}</p>
+                </section>
+              ) : null}
+
+              <section className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                <div className="mb-4">
+                  <h2 className="text-xl font-bold tracking-normal">Create</h2>
+                  <p className="mt-1 text-sm text-white/56">
+                    Create a new file or folder inside the current directory.
+                  </p>
+                </div>
+
+                <form className="grid gap-3 lg:grid-cols-[180px_1fr_auto]" onSubmit={createEntry}>
+                  <select
+                    className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition focus:border-[#e95420]"
+                    onChange={(event) => setCreateType(event.target.value)}
+                    value={createType}
+                  >
+                    <option className="bg-[#111111]" value="file">
+                      File
+                    </option>
+                    <option className="bg-[#111111]" value="directory">
+                      Folder
+                    </option>
+                  </select>
+                  <input
+                    className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                    onChange={(event) => setCreateName(event.target.value)}
+                    placeholder={createType === "directory" ? "new-folder" : "new-file.txt"}
+                    value={createName}
+                  />
+                  <button
+                    className="h-11 rounded-md bg-[#e95420] px-5 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={isCreating || !data?.path || !createName.trim()}
+                    type="submit"
+                  >
+                    {isCreating ? "Creating" : "Create"}
+                  </button>
+                </form>
+              </section>
+
               <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-xl font-bold tracking-normal">Directory Items</h2>
@@ -254,14 +342,14 @@ export default function FilesClient({ initialPath, username }) {
                 </div>
 
                 <div className="overflow-x-auto rounded-md border border-white/10">
-                  <table className="w-full min-w-[860px] table-fixed text-left text-sm">
+                  <table className="w-full min-w-[1040px] table-fixed text-left text-sm">
                     <colgroup>
-                      <col className="w-[40%]" />
-                      <col className="w-[12%]" />
-                      <col className="w-[14%]" />
+                      <col className="w-[36%]" />
+                      <col className="w-[11%]" />
+                      <col className="w-[13%]" />
                       <col className="w-[20%]" />
                       <col className="w-[10%]" />
-                      <col className="w-[4%]" />
+                      <col className="w-[10%]" />
                     </colgroup>
                     <thead className="bg-black/24 text-white/48">
                       <tr className="border-b border-white/10">
@@ -304,7 +392,7 @@ export default function FilesClient({ initialPath, username }) {
                           <td className="px-4 py-3">
                             {item.type === "file" ? (
                               <Link
-                                className="rounded-md border border-white/14 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-white/10"
+                                className="inline-flex min-w-16 justify-center rounded-md border border-white/14 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-white/10"
                                 href={`/editor?path=${encodeURIComponent(item.path)}`}
                               >
                                 Edit

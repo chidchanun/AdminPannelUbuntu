@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { getSessionFromRequest, isAdminUser } from "@/lib/access-control";
+import { canManageFirewall, getSessionFromRequest, isAdminUser } from "@/lib/access-control";
 import { writeAuditLog } from "@/lib/audit-log";
+import { blockFirewallIp } from "@/lib/firewall-control";
+import { getServerSecuritySnapshot } from "@/lib/server-security-monitor";
 import { blockIp, getThreatSnapshot, unblockIp } from "@/lib/threat-guard";
 
 export const runtime = "nodejs";
@@ -29,8 +31,11 @@ export async function GET(request) {
     return error;
   }
 
+  const server = await getServerSecuritySnapshot();
+
   return NextResponse.json({
     ...getThreatSnapshot(),
+    server,
     updatedAt: new Date().toISOString(),
   });
 }
@@ -83,6 +88,39 @@ export async function POST(request) {
     });
 
     return NextResponse.json({ ok: true, removed });
+  }
+
+  if (action === "firewall-block") {
+    if (!canManageFirewall(session.username)) {
+      return NextResponse.json({ error: "Firewall permission denied." }, { status: 403 });
+    }
+
+    try {
+      const result = await blockFirewallIp(ip);
+
+      blockIp(ip, "firewall block requested", {
+        source: "security page",
+        user: session.username,
+      });
+
+      await writeAuditLog({
+        action: "security.firewall.block",
+        ip,
+        output: result.output,
+        user: session.username,
+      });
+
+      return NextResponse.json({ ok: true, output: result.output });
+    } catch (firewallError) {
+      await writeAuditLog({
+        action: "security.firewall.block.failed",
+        error: firewallError.message,
+        ip,
+        user: session.username,
+      });
+
+      return NextResponse.json({ error: firewallError.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ error: "Unknown action." }, { status: 400 });

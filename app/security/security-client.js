@@ -19,6 +19,35 @@ function EmptyState({ children }) {
   );
 }
 
+function actionLabel(action) {
+  if (action === "firewall-block") {
+    return "Firewall blocked";
+  }
+
+  return action === "block" ? "Blocked" : "Unblocked";
+}
+
+function BlockButtons({ ip, onAction }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <button
+        className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+        onClick={() => onAction("block", ip)}
+        type="button"
+      >
+        App Block
+      </button>
+      <button
+        className="h-10 rounded-md bg-[#e95420] px-4 text-sm font-bold text-white transition hover:bg-[#c34113]"
+        onClick={() => onAction("firewall-block", ip)}
+        type="button"
+      >
+        UFW Block
+      </button>
+    </div>
+  );
+}
+
 export default function SecurityClient({ username }) {
   const [data, setData] = useState(null);
   const [manualIp, setManualIp] = useState("");
@@ -72,7 +101,7 @@ export default function SecurityClient({ username }) {
         throw new Error(payload.error || `Security API returned ${response.status}`);
       }
 
-      setMessage(`${action === "block" ? "Blocked" : "Unblocked"} ${ip}`);
+      setMessage(`${actionLabel(action)} ${ip}`);
       setError(null);
       setManualIp("");
       await loadSecurity();
@@ -134,7 +163,7 @@ export default function SecurityClient({ username }) {
             </header>
 
             <div className="grid gap-5 py-7">
-              <section className="grid gap-4 md:grid-cols-3">
+              <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
                 <article className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
                   <p className="text-sm font-semibold text-white/56">Blocked IPs</p>
                   <p className="mt-2 text-3xl font-bold">{data?.blocked?.length ?? 0}</p>
@@ -146,6 +175,24 @@ export default function SecurityClient({ username }) {
                 <article className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
                   <p className="text-sm font-semibold text-white/56">Scan Buckets</p>
                   <p className="mt-2 text-3xl font-bold">{data?.scans?.length ?? 0}</p>
+                </article>
+                <article className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                  <p className="text-sm font-semibold text-white/56">Port Alerts</p>
+                  <p className="mt-2 text-3xl font-bold">
+                    {data?.server?.connections?.alerts?.length ?? 0}
+                  </p>
+                </article>
+                <article className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                  <p className="text-sm font-semibold text-white/56">Web Scanners</p>
+                  <p className="mt-2 text-3xl font-bold">
+                    {data?.server?.webLogs?.suspicious?.length ?? 0}
+                  </p>
+                </article>
+                <article className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                  <p className="text-sm font-semibold text-white/56">SSH Attackers</p>
+                  <p className="mt-2 text-3xl font-bold">
+                    {data?.server?.auth?.failedByIp?.length ?? 0}
+                  </p>
                 </article>
               </section>
 
@@ -164,7 +211,7 @@ export default function SecurityClient({ username }) {
 
               <section className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
                 <h2 className="text-xl font-bold tracking-normal">Manual Block</h2>
-                <form className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]" onSubmit={submitManualBlock}>
+                <form className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]" onSubmit={submitManualBlock}>
                   <input
                     className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
                     onChange={(event) => setManualIp(event.target.value)}
@@ -178,7 +225,119 @@ export default function SecurityClient({ username }) {
                   >
                     Block IP
                   </button>
+                  <button
+                    className="h-11 rounded-md border border-[#e95420]/60 px-5 text-sm font-bold text-white transition hover:bg-[#e95420]/16 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!manualIp.trim()}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      changeBlock("firewall-block", manualIp.trim());
+                    }}
+                    type="button"
+                  >
+                    UFW Block
+                  </button>
                 </form>
+              </section>
+
+              <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-xl font-bold tracking-normal">Server Port Alerts</h2>
+                  <span className="text-sm text-white/50">
+                    {data?.server?.connections?.total ?? 0} active TCP rows
+                  </span>
+                </div>
+
+                {data?.server?.connections?.error ? (
+                  <p className="mb-4 rounded-md border border-[#e95420]/40 bg-[#e95420]/12 px-4 py-3 text-sm text-white/70">
+                    {data.server.connections.error}
+                  </p>
+                ) : null}
+
+                <div className="grid gap-3">
+                  {(data?.server?.connections?.alerts || []).map((item) => (
+                    <div
+                      className="grid gap-4 rounded-md border border-white/10 bg-white/[0.04] p-4 xl:grid-cols-[1fr_auto]"
+                      key={item.ip}
+                    >
+                      <div>
+                        <p className="break-all font-bold">{item.ip}</p>
+                        <p className="mt-1 text-sm text-white/58">
+                          {item.total} connections | {item.synReceived} SYN-RECV | ports{" "}
+                          {item.ports.join(", ")}
+                        </p>
+                        <p className="mt-1 text-sm text-[#ffb088]">{item.reasons.join(", ")}</p>
+                      </div>
+                      <BlockButtons ip={item.ip} onAction={changeBlock} />
+                    </div>
+                  ))}
+                  {(data?.server?.connections?.alerts || []).length === 0 ? (
+                    <EmptyState>No port alerts right now.</EmptyState>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="grid gap-5 xl:grid-cols-2">
+                <div className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                  <h2 className="text-xl font-bold tracking-normal">Web Log Scans</h2>
+                  <div className="mt-4 grid gap-3">
+                    {data?.server?.webLogs?.error ? (
+                      <p className="rounded-md border border-[#e95420]/40 bg-[#e95420]/12 px-4 py-3 text-sm text-white/70">
+                        {data.server.webLogs.error}
+                      </p>
+                    ) : null}
+
+                    {(data?.server?.webLogs?.suspicious || []).map((item) => (
+                      <div className="rounded-md bg-black/20 px-4 py-3" key={item.ip}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="break-all font-bold">{item.ip}</p>
+                            <p className="mt-1 text-sm text-white/60">
+                              {item.scanHits} scan hits | {item.notFound} not found
+                            </p>
+                            <p className="mt-1 break-all text-xs text-white/40">
+                              {item.examples.join(", ")}
+                            </p>
+                          </div>
+                          <BlockButtons ip={item.ip} onAction={changeBlock} />
+                        </div>
+                      </div>
+                    ))}
+                    {(data?.server?.webLogs?.suspicious || []).length === 0 ? (
+                      <EmptyState>No suspicious web log sources.</EmptyState>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                  <h2 className="text-xl font-bold tracking-normal">SSH Failed Login Sources</h2>
+                  <div className="mt-4 grid gap-3">
+                    {data?.server?.auth?.error ? (
+                      <p className="rounded-md border border-[#e95420]/40 bg-[#e95420]/12 px-4 py-3 text-sm text-white/70">
+                        {data.server.auth.error}
+                      </p>
+                    ) : null}
+
+                    {(data?.server?.auth?.failedByIp || []).map((item) => (
+                      <div className="rounded-md bg-black/20 px-4 py-3" key={item.ip}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="break-all font-bold">{item.ip}</p>
+                            <p className="mt-1 text-sm text-white/60">
+                              {item.total} failures | users {item.users.join(", ")}
+                            </p>
+                            <p className="mt-1 break-all text-xs text-white/40">
+                              {item.lastMessage}
+                            </p>
+                          </div>
+                          <BlockButtons ip={item.ip} onAction={changeBlock} />
+                        </div>
+                      </div>
+                    ))}
+                    {(data?.server?.auth?.failedByIp || []).length === 0 ? (
+                      <EmptyState>No repeated SSH failures.</EmptyState>
+                    ) : null}
+                  </div>
+                </div>
               </section>
 
               <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">

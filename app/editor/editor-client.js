@@ -83,9 +83,13 @@ export default function EditorClient({ initialPath, username }) {
   }, []);
 
   useEffect(() => {
-    if (initialPath) {
-      loadFile(initialPath);
+    async function loadInitialFile() {
+      if (initialPath) {
+        await loadFile(initialPath);
+      }
     }
+
+    loadInitialFile();
   }, [initialPath, loadFile]);
 
   async function saveFile() {

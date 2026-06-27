@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import AppSidebar from "@/app/components/app-sidebar";
 
 function StatCard({ label, value, detail }) {
   return (
@@ -77,48 +78,11 @@ export default function ConnectionsClient({ username }) {
   return (
     <main className="min-h-screen bg-[#1c1b22] text-white">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-white/10 bg-[#111111] px-5 py-6 lg:block">
-          <div className="flex h-full flex-col">
-            <div className="flex items-center gap-3 px-2">
-              <div className="grid h-11 w-11 place-items-center rounded-md bg-[#e95420] font-bold shadow-lg shadow-[#e95420]/20">
-                UA
-              </div>
-              <div>
-                <p className="text-sm text-white/54">Ubuntu</p>
-                <p className="font-bold">Admin Panel</p>
-              </div>
-            </div>
-
-            <nav className="mt-9 grid gap-1">
-              <Link
-                className="rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white"
-                href="/dashboard"
-              >
-                Dashboard
-              </Link>
-              <Link
-                className="rounded-md bg-[#e95420] px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#e95420]/20"
-                href="/connections"
-              >
-                Connections
-              </Link>
-              <Link
-                className="rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white"
-                href="/files"
-              >
-                Files
-              </Link>
-            </nav>
-
-            <div className="mt-auto rounded-lg border border-white/10 bg-white/[0.04] p-4">
-              <p className="text-sm font-semibold text-[#ffb088]">Signed in as</p>
-              <p className="mt-1 truncate text-base font-bold">{username}</p>
-              <p className="mt-2 text-sm leading-6 text-white/56">
-                Connection data refreshes every 5 seconds.
-              </p>
-            </div>
-          </div>
-        </aside>
+        <AppSidebar
+          activeItem="Connections"
+          helperText="Connection data refreshes every 5 seconds."
+          username={username}
+        />
 
         <section className="relative overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_0%,rgba(233,84,32,0.20),transparent_30%),linear-gradient(135deg,rgba(44,0,30,0.58),rgba(17,17,17,0.98)_56%)]" />

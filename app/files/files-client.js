@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import AppSidebar from "@/app/components/app-sidebar";
 
 function formatBytes(value) {
   if (!Number.isFinite(value)) {
@@ -42,6 +43,82 @@ function typeLabel(type) {
   }
 
   return "UNKNOWN";
+}
+
+function FolderIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-5 w-5 flex-none text-[#ffb088]"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M3.75 6.75A2.25 2.25 0 0 1 6 4.5h4.05c.6 0 1.18.24 1.6.66l1.08 1.09H18A2.25 2.25 0 0 1 20.25 8.5v8.75A2.25 2.25 0 0 1 18 19.5H6a2.25 2.25 0 0 1-2.25-2.25V6.75Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-5 w-5 flex-none text-white/58"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M7 3.75h6.35c.6 0 1.17.24 1.59.66l2.65 2.65c.42.42.66.99.66 1.59V18A2.25 2.25 0 0 1 16 20.25H7A2.25 2.25 0 0 1 4.75 18V6A2.25 2.25 0 0 1 7 3.75Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M13.25 4v3.5c0 .69.56 1.25 1.25 1.25H18"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function LinkIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-5 w-5 flex-none text-sky-200/80"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M9.5 14.5 14.5 9.5M10.75 6.75l.7-.7a4.25 4.25 0 0 1 6.01 6.01l-.7.7M13.25 17.25l-.7.7a4.25 4.25 0 0 1-6.01-6.01l.7-.7"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function EntryIcon({ type }) {
+  if (type === "directory") {
+    return <FolderIcon />;
+  }
+
+  if (type === "symlink") {
+    return <LinkIcon />;
+  }
+
+  return <FileIcon />;
 }
 
 export default function FilesClient({ username }) {
@@ -90,48 +167,11 @@ export default function FilesClient({ username }) {
   return (
     <main className="min-h-screen bg-[#1c1b22] text-white">
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-white/10 bg-[#111111] px-5 py-6 lg:block">
-          <div className="flex h-full flex-col">
-            <div className="flex items-center gap-3 px-2">
-              <div className="grid h-11 w-11 place-items-center rounded-md bg-[#e95420] font-bold shadow-lg shadow-[#e95420]/20">
-                UA
-              </div>
-              <div>
-                <p className="text-sm text-white/54">Ubuntu</p>
-                <p className="font-bold">Admin Panel</p>
-              </div>
-            </div>
-
-            <nav className="mt-9 grid gap-1">
-              <Link
-                className="rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white"
-                href="/dashboard"
-              >
-                Dashboard
-              </Link>
-              <Link
-                className="rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white"
-                href="/connections"
-              >
-                Connections
-              </Link>
-              <Link
-                className="rounded-md bg-[#e95420] px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#e95420]/20"
-                href="/files"
-              >
-                Files
-              </Link>
-            </nav>
-
-            <div className="mt-auto rounded-lg border border-white/10 bg-white/[0.04] p-4">
-              <p className="text-sm font-semibold text-[#ffb088]">Signed in as</p>
-              <p className="mt-1 truncate text-base font-bold">{username}</p>
-              <p className="mt-2 text-sm leading-6 text-white/56">
-                Directory access follows the server process permissions.
-              </p>
-            </div>
-          </div>
-        </aside>
+        <AppSidebar
+          activeItem="Files"
+          helperText="Directory access follows the server process permissions."
+          username={username}
+        />
 
         <section className="relative overflow-hidden">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_0%,rgba(233,84,32,0.20),transparent_30%),linear-gradient(135deg,rgba(44,0,30,0.58),rgba(17,17,17,0.98)_56%)]" />
@@ -239,15 +279,17 @@ export default function FilesClient({ username }) {
                           <td className="px-4 py-3">
                             {item.type === "directory" ? (
                               <button
-                                className="break-all text-left font-semibold text-[#ffb088] hover:text-white"
+                                className="flex min-w-0 items-center gap-3 text-left font-semibold text-[#ffb088] hover:text-white"
                                 onClick={() => loadDirectory(item.path)}
                                 type="button"
                               >
-                                {item.name}
+                                <EntryIcon type={item.type} />
+                                <span className="break-all">{item.name}</span>
                               </button>
                             ) : (
-                              <span className="break-all font-semibold text-white">
-                                {item.name}
+                              <span className="flex min-w-0 items-center gap-3 font-semibold text-white">
+                                <EntryIcon type={item.type} />
+                                <span className="break-all">{item.name}</span>
                               </span>
                             )}
                           </td>

@@ -9,6 +9,14 @@ const FILTERS = [
   { label: "Failed", value: "failed" },
   { label: "Inactive", value: "inactive" },
   { label: "Restartable", value: "restartable" },
+  { label: "Controllable", value: "controllable" },
+];
+const SERVICE_ACTION_BUTTONS = [
+  { label: "Start", value: "start" },
+  { label: "Stop", value: "stop", danger: true, confirm: true },
+  { label: "Restart", value: "restart", danger: true },
+  { label: "Enable", value: "enable" },
+  { label: "Disable", value: "disable", danger: true, confirm: true },
 ];
 
 function StatusBadge({ ok, state, subState }) {
@@ -33,7 +41,7 @@ export default function ServicesClient({ username }) {
   const [serviceDetail, setServiceDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [restarting, setRestarting] = useState(null);
+  const [runningAction, setRunningAction] = useState(null);
 
   const loadServices = useCallback(async () => {
     setIsLoading(true);
@@ -76,8 +84,15 @@ export default function ServicesClient({ username }) {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, []);
 
-  async function restartService(service) {
-    setRestarting(service);
+  async function runServiceAction(service, action = "restart") {
+    if (
+      ["disable", "stop"].includes(action) &&
+      !window.confirm(`${action} ${service}? This may interrupt users or apps using this service.`)
+    ) {
+      return;
+    }
+
+    setRunningAction(`${action}:${service}`);
 
     try {
       const response = await fetch("/api/services", {
@@ -85,7 +100,7 @@ export default function ServicesClient({ username }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ service }),
+        body: JSON.stringify({ action, service }),
       });
       const payload = await response.json();
 
@@ -93,14 +108,17 @@ export default function ServicesClient({ username }) {
         throw new Error(payload.error || `Services API returned ${response.status}`);
       }
 
-      setMessage(`${service} restarted.`);
+      setMessage(`${service} ${action} completed.`);
       setError(null);
       await loadServices();
+      if (selectedService) {
+        await loadServiceDetail(selectedService);
+      }
     } catch (restartError) {
       setError(restartError.message);
       setMessage(null);
     } finally {
-      setRestarting(null);
+      setRunningAction(null);
     }
   }
 
@@ -140,7 +158,8 @@ export default function ServicesClient({ username }) {
     const matchesFilter =
       filter === "all" ||
       service.state === filter ||
-      (filter === "restartable" && service.restartAllowed);
+      (filter === "restartable" && service.restartAllowed) ||
+      (filter === "controllable" && service.controlAllowed);
 
     return matchesQuery && matchesFilter;
   });
@@ -208,7 +227,7 @@ export default function ServicesClient({ username }) {
                 </section>
               ) : null}
 
-              <section className="grid gap-4 md:grid-cols-5">
+              <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
                 <article className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
                   <p className="text-sm font-semibold text-white/56">Total</p>
                   <p className="mt-2 text-3xl font-bold">{data?.summary?.total ?? 0}</p>
@@ -229,6 +248,12 @@ export default function ServicesClient({ username }) {
                   <p className="text-sm font-semibold text-white/56">Restartable</p>
                   <p className="mt-2 text-3xl font-bold">
                     {data?.summary?.restartAllowed ?? 0}
+                  </p>
+                </article>
+                <article className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                  <p className="text-sm font-semibold text-white/56">Controllable</p>
+                  <p className="mt-2 text-3xl font-bold">
+                    {data?.summary?.controlAllowed ?? 0}
                   </p>
                 </article>
               </section>
@@ -275,7 +300,7 @@ export default function ServicesClient({ username }) {
 
                   {filteredServices.map((service) => (
                     <div
-                      className="grid gap-3 rounded-md border border-white/10 bg-white/[0.04] p-4 lg:grid-cols-[1fr_auto_auto_auto] lg:items-center"
+                      className="grid gap-3 rounded-md border border-white/10 bg-white/[0.04] p-4 xl:grid-cols-[1fr_auto_minmax(260px,auto)_auto] xl:items-center"
                       key={service.name}
                     >
                       <div>
@@ -294,33 +319,47 @@ export default function ServicesClient({ username }) {
                         state={service.state}
                         subState={service.subState}
                       />
-                      {service.restartAllowed ? (
-                        <button
-                          className="h-10 rounded-md bg-[#e95420] px-4 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={Boolean(restarting)}
-                          onClick={() => restartService(service.restartTarget)}
-                          type="button"
-                        >
-                          {restarting === service.restartTarget ? "Restarting" : "Restart"}
-                        </button>
+                      {service.controlAllowed || service.restartAllowed ? (
+                        <div className="flex flex-wrap gap-2 xl:justify-end">
+                          {(service.controlAllowed
+                            ? SERVICE_ACTION_BUTTONS
+                            : SERVICE_ACTION_BUTTONS.filter((item) => item.value === "restart")
+                          ).map((item) => {
+                            const target =
+                              item.value === "restart"
+                                ? service.restartTarget
+                                : service.controlTarget;
+                            const actionId = `${item.value}:${target}`;
+
+                            return (
+                              <button
+                                className={`h-9 rounded-md px-3 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                  item.danger
+                                    ? "bg-[#e95420] text-white hover:bg-[#c34113]"
+                                    : "border border-white/10 text-white/70 hover:bg-white/10"
+                                }`}
+                                disabled={Boolean(runningAction)}
+                                key={item.value}
+                                onClick={() => runServiceAction(target, item.value)}
+                                type="button"
+                              >
+                                {runningAction === actionId ? "Running" : item.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       ) : (
-                        <button
-                          className="h-10 rounded-md border border-white/10 px-4 text-sm font-semibold text-white/62 transition hover:bg-white/10"
-                          onClick={() => loadServiceDetail(service.name)}
-                          type="button"
-                        >
-                          Details
-                        </button>
+                        <span className="rounded-md border border-white/10 px-4 py-2 text-center text-sm font-semibold text-white/42">
+                          View only
+                        </span>
                       )}
-                      {service.restartAllowed ? (
-                        <button
-                          className="h-10 rounded-md border border-white/10 px-4 text-sm font-semibold text-white/62 transition hover:bg-white/10"
-                          onClick={() => loadServiceDetail(service.name)}
-                          type="button"
-                        >
-                          Details
-                        </button>
-                      ) : null}
+                      <button
+                        className="h-10 rounded-md border border-white/10 px-4 text-sm font-semibold text-white/62 transition hover:bg-white/10"
+                        onClick={() => loadServiceDetail(service.name)}
+                        type="button"
+                      >
+                        Details
+                      </button>
                     </div>
                   ))}
                   {!isLoading && filteredServices.length === 0 ? (

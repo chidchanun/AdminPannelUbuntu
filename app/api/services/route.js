@@ -1,7 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
-import { canRestartServices, getSessionFromRequest } from "@/lib/access-control";
+import {
+  canControlServices,
+  canRestartServices,
+  getSessionFromRequest,
+} from "@/lib/access-control";
 import { writeAuditLog } from "@/lib/audit-log";
 
 export const runtime = "nodejs";
@@ -12,6 +16,7 @@ const execFileAsync = promisify(execFile);
 const SYSTEMCTL_PATH = process.env.SYSTEMCTL_PATH || "systemctl";
 const SUDO_PATH = process.env.SUDO_PATH || "sudo";
 const JOURNALCTL_PATH = process.env.JOURNALCTL_PATH || "journalctl";
+const SERVICE_ACTIONS = new Set(["disable", "enable", "restart", "start", "stop"]);
 
 function parseList(value) {
   return String(value || "")
@@ -28,6 +33,12 @@ function getServiceNames() {
   }
 
   return parseList(process.env.MONITORED_SERVICES || "ssh,nginx,mysql");
+}
+
+function getControllableServiceNames() {
+  const controllableServices = parseList(process.env.CONTROLLABLE_SERVICES);
+
+  return controllableServices.length > 0 ? controllableServices : getServiceNames();
 }
 
 function normalizeServiceName(name) {
@@ -52,6 +63,31 @@ function resolveAllowedService(serviceName) {
   );
 }
 
+function resolveControllableService(serviceName) {
+  const normalized = normalizeServiceName(serviceName);
+
+  return (
+    getControllableServiceNames().find((allowedService) => {
+      const allowedNormalized = normalizeServiceName(allowedService);
+
+      return allowedService === serviceName || allowedNormalized === normalized;
+    }) || null
+  );
+}
+
+function enrichService(service) {
+  const controlTarget = resolveControllableService(service.name);
+  const restartTarget = resolveAllowedService(service.name);
+
+  return {
+    ...service,
+    controlAllowed: Boolean(controlTarget),
+    controlTarget,
+    restartAllowed: Boolean(restartTarget),
+    restartTarget,
+  };
+}
+
 async function readServiceStatus(name) {
   try {
     const { stdout } = await execFileAsync(SYSTEMCTL_PATH, ["is-active", name]);
@@ -60,8 +96,7 @@ async function readServiceStatus(name) {
       description: "",
       load: "loaded",
       name,
-      restartAllowed: Boolean(resolveAllowedService(name)),
-      restartTarget: resolveAllowedService(name),
+      ...enrichService({ name }),
       subState: stdout.trim() || "unknown",
       state: stdout.trim() || "unknown",
       ok: stdout.trim() === "active",
@@ -71,8 +106,7 @@ async function readServiceStatus(name) {
       description: "",
       load: "unknown",
       name,
-      restartAllowed: Boolean(resolveAllowedService(name)),
-      restartTarget: resolveAllowedService(name),
+      ...enrichService({ name }),
       subState: String(error.stdout || "").trim() || "failed",
       state: String(error.stdout || "").trim() || "failed",
       ok: false,
@@ -88,18 +122,14 @@ function parseServiceLine(line) {
     return null;
   }
 
-  const restartTarget = resolveAllowedService(name);
-
-  return {
+  return enrichService({
     description: descriptionParts.join(" "),
     load,
     name,
     ok: active === "active",
-    restartAllowed: Boolean(restartTarget),
-    restartTarget,
     state: active,
     subState,
-  };
+  });
 }
 
 async function listAllServices() {
@@ -237,9 +267,11 @@ export async function GET(request) {
 
   return NextResponse.json({
     allowlist: getServiceNames(),
+    controlAllowlist: getControllableServiceNames(),
     error: result.error,
     summary: {
       active,
+      controlAllowed: result.services.filter((service) => service.controlAllowed).length,
       failed,
       inactive,
       restartAllowed: result.services.filter((service) => service.restartAllowed).length,
@@ -257,16 +289,6 @@ export async function POST(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!canRestartServices(session.username)) {
-    await writeAuditLog({
-      action: "service.restart.denied",
-      reason: "permission denied",
-      user: session.username,
-    });
-
-    return NextResponse.json({ error: "Service restart permission denied." }, { status: 403 });
-  }
-
   let body;
 
   try {
@@ -275,42 +297,70 @@ export async function POST(request) {
     return NextResponse.json({ error: "Invalid JSON payload." }, { status: 400 });
   }
 
+  const action = String(body?.action || "restart").trim().toLowerCase();
   const serviceName = String(body?.service || "").trim();
-  const allowedService = resolveAllowedService(serviceName);
+
+  if (!SERVICE_ACTIONS.has(action)) {
+    return NextResponse.json({ error: "Unknown service action." }, { status: 400 });
+  }
+
+  const canRunAction =
+    action === "restart"
+      ? canRestartServices(session.username)
+      : canControlServices(session.username);
+
+  if (!canRunAction) {
+    await writeAuditLog({
+      action: "service.action.denied",
+      serviceAction: action,
+      reason: "permission denied",
+      user: session.username,
+    });
+
+    return NextResponse.json({ error: "Service action permission denied." }, { status: 403 });
+  }
+
+  const allowedService =
+    action === "restart"
+      ? resolveAllowedService(serviceName)
+      : resolveControllableService(serviceName);
 
   if (!allowedService) {
     await writeAuditLog({
-      action: "service.restart.denied",
+      action: "service.action.denied",
       reason: "service is not in allowlist",
+      serviceAction: action,
       service: serviceName,
       user: session.username,
     });
 
     return NextResponse.json(
-      { error: "Service is not in the restart allowlist." },
+      { error: "Service is not in the action allowlist." },
       { status: 403 },
     );
   }
 
   try {
-    await execFileAsync(SUDO_PATH, ["-n", SYSTEMCTL_PATH, "restart", allowedService]);
+    await execFileAsync(SUDO_PATH, ["-n", SYSTEMCTL_PATH, action, allowedService]);
 
     await writeAuditLog({
-      action: "service.restart",
+      action: `service.${action}`,
       service: allowedService,
       user: session.username,
     });
 
     return NextResponse.json({
       ok: true,
+      action,
       service: allowedService,
-      restartedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
     });
   } catch (error) {
     await writeAuditLog({
-      action: "service.restart.failed",
+      action: `service.${action}.failed`,
       error: error.message,
       service: allowedService,
+      serviceAction: action,
       user: session.username,
     });
 

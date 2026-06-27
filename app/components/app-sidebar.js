@@ -8,6 +8,7 @@ const navigationItems = [
   { label: "Files", href: "/files" },
   { label: "Editor", href: "/editor" },
   { label: "Services", href: "/services" },
+  { label: "Security", href: "/security" },
   { label: "Audit", href: "/audit" },
   { label: "Notices", href: "#" },
   { label: "Settings", href: "#" },

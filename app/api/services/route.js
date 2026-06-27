@@ -9,6 +9,9 @@ export const dynamic = "force-dynamic";
 
 const execFileAsync = promisify(execFile);
 
+const SYSTEMCTL_PATH = process.env.SYSTEMCTL_PATH || "systemctl";
+const SUDO_PATH = process.env.SUDO_PATH || "sudo";
+
 function parseList(value) {
   return String(value || "")
     .split(",")
@@ -28,7 +31,7 @@ function getServiceNames() {
 
 async function readServiceStatus(name) {
   try {
-    const { stdout } = await execFileAsync("systemctl", ["is-active", name]);
+    const { stdout } = await execFileAsync(SYSTEMCTL_PATH, ["is-active", name]);
 
     return {
       name,
@@ -102,7 +105,7 @@ export async function POST(request) {
   }
 
   try {
-    await execFileAsync("systemctl", ["restart", serviceName]);
+    await execFileAsync(SUDO_PATH, ["-n", SYSTEMCTL_PATH, "restart", serviceName]);
 
     await writeAuditLog({
       action: "service.restart",

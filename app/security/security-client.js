@@ -48,12 +48,44 @@ function BlockButtons({ ip, onAction }) {
   );
 }
 
+function ToggleButton({ checked, disabled, label, onToggle, tone = "safe" }) {
+  return (
+    <button
+      aria-pressed={checked}
+      className={`flex h-11 items-center gap-3 rounded-md border px-4 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+        checked
+          ? tone === "danger"
+            ? "border-[#e95420]/60 bg-[#e95420]/18 text-[#ffb088]"
+            : "border-emerald-400/30 bg-emerald-400/12 text-emerald-100"
+          : "border-white/10 bg-white/8 text-white/58 hover:bg-white/12"
+      }`}
+      disabled={disabled}
+      onClick={onToggle}
+      type="button"
+    >
+      <span
+        className={`relative h-5 w-9 rounded-full transition ${
+          checked ? "bg-current/50" : "bg-white/20"
+        }`}
+      >
+        <span
+          className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white transition ${
+            checked ? "left-4" : "left-0.5"
+          }`}
+        />
+      </span>
+      {label} {checked ? "On" : "Off"}
+    </button>
+  );
+}
+
 export default function SecurityClient({ username }) {
   const [data, setData] = useState(null);
   const [manualIp, setManualIp] = useState("");
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [savingSetting, setSavingSetting] = useState(null);
 
   const loadSecurity = useCallback(async () => {
     setIsLoading(true);
@@ -108,6 +140,47 @@ export default function SecurityClient({ username }) {
     } catch (changeError) {
       setError(changeError.message);
       setMessage(null);
+    }
+  }
+
+  async function updateSetting(key, value) {
+    setSavingSetting(key);
+
+    try {
+      const response = await fetch("/api/security", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "settings",
+          settings: {
+            [key]: value,
+          },
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Security API returned ${response.status}`);
+      }
+
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              settings: payload.settings,
+            }
+          : current,
+      );
+      setMessage("Security settings updated.");
+      setError(null);
+      await loadSecurity();
+    } catch (settingError) {
+      setError(settingError.message);
+      setMessage(null);
+    } finally {
+      setSavingSetting(null);
     }
   }
 
@@ -214,37 +287,39 @@ export default function SecurityClient({ username }) {
                   <div>
                     <h2 className="text-xl font-bold tracking-normal">Auto Blocking</h2>
                     <p className="mt-2 text-sm leading-6 text-white/58">
-                      App blocks are saved to disk. Firewall auto block only runs when enabled by env.
+                      App blocks are saved to disk. UFW auto block affects the whole server.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <span
-                      className={`rounded-full px-3 py-1 text-sm font-bold ${
-                        data?.settings?.autoAppBlock
-                          ? "bg-emerald-400/12 text-emerald-200"
-                          : "bg-white/8 text-white/58"
-                      }`}
-                    >
-                      App Auto {data?.settings?.autoAppBlock ? "On" : "Off"}
-                    </span>
-                    <span
-                      className={`rounded-full px-3 py-1 text-sm font-bold ${
-                        data?.settings?.autoFirewallBlock
-                          ? "bg-emerald-400/12 text-emerald-200"
-                          : "bg-white/8 text-white/58"
-                      }`}
-                    >
-                      UFW Auto {data?.settings?.autoFirewallBlock ? "On" : "Off"}
-                    </span>
-                    <span
-                      className={`rounded-full px-3 py-1 text-sm font-bold ${
-                        data?.settings?.autoBlockPrivateIps
-                          ? "bg-[#e95420]/18 text-[#ffb088]"
-                          : "bg-white/8 text-white/58"
-                      }`}
-                    >
-                      Private IPs {data?.settings?.autoBlockPrivateIps ? "Included" : "Skipped"}
-                    </span>
+                    <ToggleButton
+                      checked={Boolean(data?.settings?.autoAppBlock)}
+                      disabled={savingSetting !== null}
+                      label="App Auto"
+                      onToggle={() =>
+                        updateSetting("autoAppBlock", !data?.settings?.autoAppBlock)
+                      }
+                    />
+                    <ToggleButton
+                      checked={Boolean(data?.settings?.autoFirewallBlock)}
+                      disabled={savingSetting !== null}
+                      label="UFW Auto"
+                      onToggle={() =>
+                        updateSetting("autoFirewallBlock", !data?.settings?.autoFirewallBlock)
+                      }
+                      tone="danger"
+                    />
+                    <ToggleButton
+                      checked={Boolean(data?.settings?.autoBlockPrivateIps)}
+                      disabled={savingSetting !== null}
+                      label="Private IPs"
+                      onToggle={() =>
+                        updateSetting(
+                          "autoBlockPrivateIps",
+                          !data?.settings?.autoBlockPrivateIps,
+                        )
+                      }
+                      tone="danger"
+                    />
                   </div>
                 </div>
 

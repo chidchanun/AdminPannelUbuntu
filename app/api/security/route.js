@@ -7,6 +7,8 @@ import {
   persistBlock,
   persistCurrentBlocks,
   removePersistentBlock,
+  getSecuritySettings,
+  updateSecuritySettings,
 } from "@/lib/security-block-store";
 import { getServerSecuritySnapshot } from "@/lib/server-security-monitor";
 import { getThreatSnapshot } from "@/lib/threat-guard";
@@ -30,10 +32,6 @@ function requireAdmin(request) {
   return { session };
 }
 
-function isEnabled(value) {
-  return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
-}
-
 function isPrivateOrLocalIp(ip) {
   return (
     ip === "unknown" ||
@@ -48,7 +46,7 @@ function isPrivateOrLocalIp(ip) {
   );
 }
 
-function collectAutoBlockCandidates(server) {
+function collectAutoBlockCandidates(server, settings) {
   const candidates = new Map();
 
   for (const item of server.connections.alerts || []) {
@@ -80,25 +78,23 @@ function collectAutoBlockCandidates(server) {
       return false;
     }
 
-    return isEnabled(process.env.AUTO_BLOCK_PRIVATE_IPS) || !isPrivateOrLocalIp(item.ip);
+    return settings.autoBlockPrivateIps || !isPrivateOrLocalIp(item.ip);
   });
 }
 
-async function applyAutoBlocks(server) {
+async function applyAutoBlocks(server, settings) {
   const existingBlocks = new Set(getThreatSnapshot().blocked.map((block) => block.ip));
-  const candidates = collectAutoBlockCandidates(server).filter(
+  const candidates = collectAutoBlockCandidates(server, settings).filter(
     (candidate) => !existingBlocks.has(candidate.ip),
   );
-  const autoAppBlock = isEnabled(process.env.AUTO_APP_BLOCK);
-  const autoFirewallBlock = isEnabled(process.env.AUTO_FIREWALL_BLOCK);
   const results = [];
 
-  if (!autoAppBlock && !autoFirewallBlock) {
+  if (!settings.autoAppBlock && !settings.autoFirewallBlock) {
     return results;
   }
 
   for (const candidate of candidates) {
-    if (autoAppBlock) {
+    if (settings.autoAppBlock) {
       await persistBlock(candidate.ip, candidate.reason, {
         ...candidate.details,
         source: "auto security monitor",
@@ -112,7 +108,7 @@ async function applyAutoBlocks(server) {
       });
     }
 
-    if (autoFirewallBlock) {
+    if (settings.autoFirewallBlock) {
       try {
         const result = await blockFirewallIp(candidate.ip);
 
@@ -158,19 +154,16 @@ export async function GET(request) {
   }
 
   await loadPersistentBlocks();
+  const settings = await getSecuritySettings();
   const server = await getServerSecuritySnapshot();
-  const autoBlocks = await applyAutoBlocks(server);
+  const autoBlocks = await applyAutoBlocks(server, settings);
   await persistCurrentBlocks();
 
   return NextResponse.json({
     ...getThreatSnapshot(),
     autoBlocks,
     server,
-    settings: {
-      autoAppBlock: isEnabled(process.env.AUTO_APP_BLOCK),
-      autoBlockPrivateIps: isEnabled(process.env.AUTO_BLOCK_PRIVATE_IPS),
-      autoFirewallBlock: isEnabled(process.env.AUTO_FIREWALL_BLOCK),
-    },
+    settings,
     updatedAt: new Date().toISOString(),
   });
 }
@@ -191,6 +184,19 @@ export async function POST(request) {
   }
 
   const action = body?.action;
+
+  if (action === "settings") {
+    const settings = await updateSecuritySettings(body?.settings || {});
+
+    await writeAuditLog({
+      action: "security.settings.update",
+      settings,
+      user: session.username,
+    });
+
+    return NextResponse.json({ ok: true, settings });
+  }
+
   const ip = String(body?.ip || "").trim();
 
   if (!ip) {

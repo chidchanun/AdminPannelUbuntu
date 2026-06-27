@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { canManageFirewall, getSessionFromRequest, isAdminUser } from "@/lib/access-control";
 import { writeAuditLog } from "@/lib/audit-log";
-import { blockFirewallIp } from "@/lib/firewall-control";
+import { blockFirewallIp, isValidFirewallTarget } from "@/lib/firewall-control";
+import {
+  loadPersistentBlocks,
+  persistBlock,
+  persistCurrentBlocks,
+  removePersistentBlock,
+} from "@/lib/security-block-store";
 import { getServerSecuritySnapshot } from "@/lib/server-security-monitor";
-import { blockIp, getThreatSnapshot, unblockIp } from "@/lib/threat-guard";
+import { getThreatSnapshot } from "@/lib/threat-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +30,126 @@ function requireAdmin(request) {
   return { session };
 }
 
+function isEnabled(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").toLowerCase());
+}
+
+function isPrivateOrLocalIp(ip) {
+  return (
+    ip === "unknown" ||
+    ip === "127.0.0.1" ||
+    ip === "::1" ||
+    ip.startsWith("10.") ||
+    ip.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ||
+    /^fe80:/i.test(ip) ||
+    /^fc[0-9a-f]:/i.test(ip) ||
+    /^fd[0-9a-f]:/i.test(ip)
+  );
+}
+
+function collectAutoBlockCandidates(server) {
+  const candidates = new Map();
+
+  for (const item of server.connections.alerts || []) {
+    candidates.set(item.ip, {
+      details: item,
+      ip: item.ip,
+      reason: `port alert: ${item.reasons.join(", ")}`,
+    });
+  }
+
+  for (const item of server.webLogs.suspicious || []) {
+    candidates.set(item.ip, {
+      details: item,
+      ip: item.ip,
+      reason: "web log scan detected",
+    });
+  }
+
+  for (const item of server.auth.failedByIp || []) {
+    candidates.set(item.ip, {
+      details: item,
+      ip: item.ip,
+      reason: "ssh failed login threshold exceeded",
+    });
+  }
+
+  return [...candidates.values()].filter((item) => {
+    if (!isValidFirewallTarget(item.ip)) {
+      return false;
+    }
+
+    return isEnabled(process.env.AUTO_BLOCK_PRIVATE_IPS) || !isPrivateOrLocalIp(item.ip);
+  });
+}
+
+async function applyAutoBlocks(server) {
+  const existingBlocks = new Set(getThreatSnapshot().blocked.map((block) => block.ip));
+  const candidates = collectAutoBlockCandidates(server).filter(
+    (candidate) => !existingBlocks.has(candidate.ip),
+  );
+  const autoAppBlock = isEnabled(process.env.AUTO_APP_BLOCK);
+  const autoFirewallBlock = isEnabled(process.env.AUTO_FIREWALL_BLOCK);
+  const results = [];
+
+  if (!autoAppBlock && !autoFirewallBlock) {
+    return results;
+  }
+
+  for (const candidate of candidates) {
+    if (autoAppBlock) {
+      await persistBlock(candidate.ip, candidate.reason, {
+        ...candidate.details,
+        source: "auto security monitor",
+      });
+      results.push({ action: "app-block", ip: candidate.ip, ok: true });
+
+      await writeAuditLog({
+        action: "security.auto.app_block",
+        ip: candidate.ip,
+        reason: candidate.reason,
+      });
+    }
+
+    if (autoFirewallBlock) {
+      try {
+        const result = await blockFirewallIp(candidate.ip);
+
+        results.push({
+          action: "firewall-block",
+          ip: candidate.ip,
+          ok: true,
+          output: result.output,
+        });
+
+        await writeAuditLog({
+          action: "security.auto.firewall_block",
+          ip: candidate.ip,
+          output: result.output,
+          reason: candidate.reason,
+        });
+      } catch (error) {
+        results.push({
+          action: "firewall-block",
+          error: error.message,
+          ip: candidate.ip,
+          ok: false,
+        });
+
+        await writeAuditLog({
+          action: "security.auto.firewall_block.failed",
+          error: error.message,
+          ip: candidate.ip,
+          reason: candidate.reason,
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
 export async function GET(request) {
   const { error } = requireAdmin(request);
 
@@ -31,11 +157,20 @@ export async function GET(request) {
     return error;
   }
 
+  await loadPersistentBlocks();
   const server = await getServerSecuritySnapshot();
+  const autoBlocks = await applyAutoBlocks(server);
+  await persistCurrentBlocks();
 
   return NextResponse.json({
     ...getThreatSnapshot(),
+    autoBlocks,
     server,
+    settings: {
+      autoAppBlock: isEnabled(process.env.AUTO_APP_BLOCK),
+      autoBlockPrivateIps: isEnabled(process.env.AUTO_BLOCK_PRIVATE_IPS),
+      autoFirewallBlock: isEnabled(process.env.AUTO_FIREWALL_BLOCK),
+    },
     updatedAt: new Date().toISOString(),
   });
 }
@@ -63,7 +198,7 @@ export async function POST(request) {
   }
 
   if (action === "block") {
-    blockIp(ip, "manual block", {
+    await persistBlock(ip, "manual block", {
       source: "security page",
       user: session.username,
     });
@@ -78,7 +213,7 @@ export async function POST(request) {
   }
 
   if (action === "unblock") {
-    const removed = unblockIp(ip);
+    const removed = await removePersistentBlock(ip);
 
     await writeAuditLog({
       action: "security.ip.unblock",
@@ -98,7 +233,7 @@ export async function POST(request) {
     try {
       const result = await blockFirewallIp(ip);
 
-      blockIp(ip, "firewall block requested", {
+      await persistBlock(ip, "firewall block requested", {
         source: "security page",
         user: session.username,
       });

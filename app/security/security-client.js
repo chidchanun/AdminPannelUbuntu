@@ -210,6 +210,63 @@ export default function SecurityClient({ username }) {
               ) : null}
 
               <section className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+                  <div>
+                    <h2 className="text-xl font-bold tracking-normal">Auto Blocking</h2>
+                    <p className="mt-2 text-sm leading-6 text-white/58">
+                      App blocks are saved to disk. Firewall auto block only runs when enabled by env.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span
+                      className={`rounded-full px-3 py-1 text-sm font-bold ${
+                        data?.settings?.autoAppBlock
+                          ? "bg-emerald-400/12 text-emerald-200"
+                          : "bg-white/8 text-white/58"
+                      }`}
+                    >
+                      App Auto {data?.settings?.autoAppBlock ? "On" : "Off"}
+                    </span>
+                    <span
+                      className={`rounded-full px-3 py-1 text-sm font-bold ${
+                        data?.settings?.autoFirewallBlock
+                          ? "bg-emerald-400/12 text-emerald-200"
+                          : "bg-white/8 text-white/58"
+                      }`}
+                    >
+                      UFW Auto {data?.settings?.autoFirewallBlock ? "On" : "Off"}
+                    </span>
+                    <span
+                      className={`rounded-full px-3 py-1 text-sm font-bold ${
+                        data?.settings?.autoBlockPrivateIps
+                          ? "bg-[#e95420]/18 text-[#ffb088]"
+                          : "bg-white/8 text-white/58"
+                      }`}
+                    >
+                      Private IPs {data?.settings?.autoBlockPrivateIps ? "Included" : "Skipped"}
+                    </span>
+                  </div>
+                </div>
+
+                {(data?.autoBlocks || []).length > 0 ? (
+                  <div className="mt-4 grid gap-2">
+                    {data.autoBlocks.slice(0, 8).map((item, index) => (
+                      <p
+                        className={`rounded-md px-4 py-3 text-sm ${
+                          item.ok
+                            ? "bg-emerald-400/10 text-emerald-100"
+                            : "bg-[#e95420]/14 text-[#ffb088]"
+                        }`}
+                        key={`${item.ip}-${item.action}-${index}`}
+                      >
+                        {item.action} {item.ip}: {item.ok ? "ok" : item.error}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
                 <h2 className="text-xl font-bold tracking-normal">Manual Block</h2>
                 <form className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]" onSubmit={submitManualBlock}>
                   <input

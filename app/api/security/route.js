@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { canManageFirewall, getSessionFromRequest, isAdminUser } from "@/lib/access-control";
 import { writeAuditLog } from "@/lib/audit-log";
-import { blockFirewallIp, isValidFirewallTarget, unblockFirewallIp } from "@/lib/firewall-control";
+import {
+  blockFirewallIp,
+  isValidFirewallTarget,
+  normalizeFirewallTarget,
+  unblockFirewallIp,
+} from "@/lib/firewall-control";
 import {
   addWhitelistEntry,
   loadPersistentBlocks,
@@ -162,7 +167,8 @@ export async function GET(request) {
   const settings = await getSecuritySettings();
   const server = await getServerSecuritySnapshot();
   const autoBlocks = await applyAutoBlocks(server, settings);
-  const clientIp = getClientIp(request);
+  const rawClientIp = getClientIp(request);
+  const clientIp = normalizeFirewallTarget(rawClientIp) || rawClientIp;
   await persistCurrentBlocks();
 
   return NextResponse.json({
@@ -170,6 +176,8 @@ export async function GET(request) {
     autoBlocks,
     client: {
       ip: clientIp,
+      rawIp: rawClientIp,
+      validTarget: Boolean(normalizeFirewallTarget(clientIp)),
       whitelisted: isWhitelistedIp(clientIp),
     },
     server,
@@ -208,9 +216,9 @@ export async function POST(request) {
   }
 
   if (action === "whitelist-add") {
-    const entry = String(body?.entry || "").trim();
+    const entry = normalizeFirewallTarget(body?.entry);
 
-    if (!entry || !isValidFirewallTarget(entry)) {
+    if (!entry) {
       return NextResponse.json({ error: "Valid IP or CIDR is required." }, { status: 400 });
     }
 

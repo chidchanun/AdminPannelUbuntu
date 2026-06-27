@@ -359,6 +359,11 @@ export default function SecurityClient({ username }) {
                     <p className="mt-2 break-all text-sm leading-6 text-white/70">
                       {data?.client?.ip || "unknown"}
                     </p>
+                    {data?.client?.rawIp && data.client.rawIp !== data.client.ip ? (
+                      <p className="mt-1 break-all text-xs text-white/42">
+                        Raw: {data.client.rawIp}
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-sm leading-6 text-white/58">
                       {data?.client?.whitelisted
                         ? "This IP is in whitelist and will not be auto blocked."
@@ -367,7 +372,11 @@ export default function SecurityClient({ username }) {
                   </div>
                   <button
                     className="h-11 rounded-md bg-emerald-500 px-5 text-sm font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!data?.client?.ip || data.client.ip === "unknown" || data?.client?.whitelisted}
+                    disabled={
+                      !data?.client?.validTarget ||
+                      data.client.ip === "unknown" ||
+                      data?.client?.whitelisted
+                    }
                     onClick={() => changeWhitelist("whitelist-add", data.client.ip)}
                     type="button"
                   >

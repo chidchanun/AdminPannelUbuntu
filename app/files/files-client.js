@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import AppSidebar from "@/app/components/app-sidebar";
+import AppSidebar, { AppMobileNav } from "@/app/components/app-sidebar";
 
 function formatBytes(value) {
   if (!Number.isFinite(value)) {
@@ -209,6 +209,7 @@ export default function FilesClient({ initialPath, username }) {
 
   return (
     <main className="min-h-screen bg-[#1c1b22] text-white">
+      <AppMobileNav activeItem="Files" />
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <AppSidebar
           activeItem="Files"

@@ -7,6 +7,7 @@ const navigationItems = [
   { label: "Connections", href: "/connections" },
   { label: "Files", href: "/files" },
   { label: "Editor", href: "/editor" },
+  { label: "Services", href: "/services" },
   { label: "Notices", href: "#" },
   { label: "Settings", href: "#" },
 ];
@@ -55,5 +56,35 @@ export default function AppSidebar({ activeItem, helperText, username }) {
         </div>
       </div>
     </aside>
+  );
+}
+
+export function AppMobileNav({ activeItem }) {
+  return (
+    <nav className="grid gap-2 border-b border-white/10 bg-[#111111]/95 px-4 py-3 lg:hidden">
+      <div className="flex items-center gap-3">
+        <div className="grid h-9 w-9 place-items-center rounded-md bg-[#e95420] text-sm font-bold">
+          UA
+        </div>
+        <span className="font-bold">Ubuntu Admin Panel</span>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {navigationItems
+          .filter((item) => item.href !== "#")
+          .map((item) => (
+            <Link
+              className={`shrink-0 rounded-md px-3 py-2 text-sm font-semibold ${
+                item.label === activeItem
+                  ? "bg-[#e95420] text-white"
+                  : "bg-white/8 text-white/68"
+              }`}
+              href={item.href}
+              key={item.label}
+            >
+              {item.label}
+            </Link>
+          ))}
+      </div>
+    </nav>
   );
 }

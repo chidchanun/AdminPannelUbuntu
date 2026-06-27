@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/access-control";
+import { writeAuditLog } from "@/lib/audit-log";
 import { SESSION_COOKIE } from "@/lib/auth-session";
 
 export const runtime = "nodejs";
@@ -19,10 +21,16 @@ function getPublicUrl(request, pathname) {
   return new URL(pathname, `${proto}://${host}`);
 }
 
-export function POST(request) {
+export async function POST(request) {
+  const session = getSessionFromRequest(request);
   const response = NextResponse.redirect(getPublicUrl(request, "/"), 303);
 
   response.cookies.delete(SESSION_COOKIE);
+
+  await writeAuditLog({
+    action: "logout",
+    user: session?.username || "unknown",
+  });
 
   return response;
 }

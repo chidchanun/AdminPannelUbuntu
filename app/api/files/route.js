@@ -1,7 +1,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import { readSessionValue, SESSION_COOKIE } from "@/lib/auth-session";
+import { canWriteFiles, getSessionFromRequest } from "@/lib/access-control";
+import { writeAuditLog } from "@/lib/audit-log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ function formatMode(mode) {
 }
 
 function isAuthenticated(request) {
-  return Boolean(readSessionValue(request.cookies.get(SESSION_COOKIE)?.value));
+  return Boolean(getSessionFromRequest(request));
 }
 
 function isSafeEntryName(name) {
@@ -144,8 +145,20 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  if (!isAuthenticated(request)) {
+  const session = getSessionFromRequest(request);
+
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!canWriteFiles(session.username)) {
+    await writeAuditLog({
+      action: "file.create.denied",
+      reason: "write permission denied",
+      user: session.username,
+    });
+
+    return NextResponse.json({ error: "File create permission denied." }, { status: 403 });
   }
 
   let body;
@@ -211,6 +224,12 @@ export async function POST(request) {
     } else {
       await fs.writeFile(targetPath, "", { flag: "wx" });
     }
+
+    await writeAuditLog({
+      action: type === "directory" ? "folder.create" : "file.create",
+      path: targetPath,
+      user: session.username,
+    });
 
     return NextResponse.json({
       ok: true,

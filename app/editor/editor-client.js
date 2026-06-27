@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import AppSidebar from "@/app/components/app-sidebar";
+import AppSidebar, { AppMobileNav } from "@/app/components/app-sidebar";
 
 function formatBytes(value) {
   if (!Number.isFinite(value)) {
@@ -120,10 +120,11 @@ export default function EditorClient({ initialPath, username }) {
       setSavedContent(content);
       setFileInfo((current) => ({
         ...current,
+        backupPath: payload.backupPath,
         size: payload.size,
         modifiedAt: payload.savedAt,
       }));
-      setMessage("Saved successfully.");
+      setMessage(`Saved successfully. Backup: ${payload.backupPath}`);
       setError(null);
     } catch (saveError) {
       setError(saveError.message);
@@ -140,6 +141,7 @@ export default function EditorClient({ initialPath, username }) {
 
   return (
     <main className="min-h-screen bg-[#1c1b22] text-white">
+      <AppMobileNav activeItem="Editor" />
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <AppSidebar
           activeItem="Editor"

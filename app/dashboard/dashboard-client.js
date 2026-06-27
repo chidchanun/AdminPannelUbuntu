@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import AppSidebar from "@/app/components/app-sidebar";
+import AppSidebar, { AppMobileNav } from "@/app/components/app-sidebar";
 
 function formatPercent(value) {
   if (!Number.isFinite(value)) {
@@ -169,6 +169,7 @@ export default function DashboardClient({ username }) {
 
   return (
     <main className="min-h-screen bg-[#1c1b22] text-white">
+      <AppMobileNav activeItem="Dashboard" />
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <AppSidebar
           activeItem="Dashboard"
@@ -191,12 +192,21 @@ export default function DashboardClient({ username }) {
               </div>
 
               <form action="/api/logout" method="post">
-                <button
-                  type="submit"
-                  className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
-                >
-                  Logout
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                    onClick={() => window.location.reload()}
+                    type="button"
+                  >
+                    Refresh
+                  </button>
+                  <button
+                    type="submit"
+                    className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                  >
+                    Logout
+                  </button>
+                </div>
               </form>
             </header>
 

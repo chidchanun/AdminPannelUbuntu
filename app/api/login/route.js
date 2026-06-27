@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createRequire } from "node:module";
+import { writeAuditLog } from "@/lib/audit-log";
 import {
   createSessionValue,
   SESSION_COOKIE,
@@ -9,31 +9,33 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const require = createRequire(import.meta.url);
+async function loadPamAuthenticator() {
+  const packageName = "authenticate-pam";
 
-function loadPamAuthenticator() {
   try {
-    return require("authenticate-pam");
+    const runtimeImport = new Function("packageName", "return import(packageName)");
+
+    return await runtimeImport(packageName);
   } catch (error) {
     console.error("Unable to load authenticate-pam:", error);
     return null;
   }
 }
 
-function authenticateUbuntuUser(username, password) {
+async function authenticateUbuntuUser(username, password) {
   if (process.platform !== "linux") {
-    return Promise.resolve({ ok: false, reason: "platform" });
+    return { ok: false, reason: "platform" };
   }
 
-  const pamModule = loadPamAuthenticator();
-  const authenticate = pamModule?.authenticate;
+  const pamModule = await loadPamAuthenticator();
+  const authenticate = pamModule?.default?.authenticate ?? pamModule?.authenticate;
 
   if (!authenticate) {
     console.error(
-      "PAM authentication is not configured. Install authenticate-pam on the Ubuntu server."
+      "PAM authentication is not configured. Install authenticate-pam on the Ubuntu server.",
     );
 
-    return Promise.resolve({ ok: false, reason: "pam" });
+    return { ok: false, reason: "pam" };
   }
 
   return new Promise((resolve) => {
@@ -51,7 +53,7 @@ function authenticateUbuntuUser(username, password) {
       },
       {
         serviceName: process.env.PAM_SERVICE || "nextjs",
-      }
+      },
     );
   });
 }
@@ -85,48 +87,56 @@ function getPublicUrl(request, pathname) {
   }
 
   const proto =
-    forwardedProto?.split(",")[0].trim() ||
-    fallbackUrl.protocol.replace(":", "");
+    forwardedProto?.split(",")[0].trim() || fallbackUrl.protocol.replace(":", "");
 
   return new URL(pathname, `${proto}://${host}`);
 }
 
+function getAllowedUsers() {
+  return String(process.env.LOGIN_ALLOWED_USERS || "ChidchanunServer")
+    .split(",")
+    .map((user) => user.trim())
+    .filter(Boolean);
+}
+
 export async function POST(request) {
   const formData = await request.formData();
-
   const username = String(formData.get("username") || "").trim();
   const password = String(formData.get("password") || "");
 
   if (!username || !password) {
-    return NextResponse.redirect(
-      getPublicUrl(request, "/?error=missing"),
-      303
-    );
+    await writeAuditLog({
+      action: "login.failed",
+      reason: "missing credentials",
+      username,
+    });
+
+    return NextResponse.redirect(getPublicUrl(request, "/?error=missing"), 303);
   }
 
-  // แนะนำให้จำกัด user ที่ล็อกอินได้
-  const allowedUsers = ["ChidchanunServer"];
+  if (!getAllowedUsers().includes(username)) {
+    await writeAuditLog({
+      action: "login.failed",
+      reason: "user not allowlisted",
+      username,
+    });
 
-  if (!allowedUsers.includes(username)) {
-    return NextResponse.redirect(
-      getPublicUrl(request, "/?error=forbidden"),
-      303
-    );
+    return NextResponse.redirect(getPublicUrl(request, "/?error=forbidden"), 303);
   }
 
   const result = await authenticateUbuntuUser(username, password);
 
   if (!result.ok) {
-    return NextResponse.redirect(
-      getPublicUrl(request, `/?error=${result.reason}`),
-      303
-    );
+    await writeAuditLog({
+      action: "login.failed",
+      reason: result.reason,
+      username,
+    });
+
+    return NextResponse.redirect(getPublicUrl(request, `/?error=${result.reason}`), 303);
   }
 
-  const response = NextResponse.redirect(
-    getPublicUrl(request, "/dashboard"),
-    303
-  );
+  const response = NextResponse.redirect(getPublicUrl(request, "/dashboard"), 303);
 
   response.cookies.set({
     name: SESSION_COOKIE,
@@ -136,6 +146,11 @@ export async function POST(request) {
     secure: shouldUseSecureCookie(request),
     path: "/",
     maxAge: SESSION_MAX_AGE,
+  });
+
+  await writeAuditLog({
+    action: "login.success",
+    user: username,
   });
 
   return response;

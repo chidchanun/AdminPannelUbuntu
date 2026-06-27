@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import AppSidebar from "@/app/components/app-sidebar";
+import AppSidebar, { AppMobileNav } from "@/app/components/app-sidebar";
 
 function StatCard({ label, value, detail }) {
   return (
@@ -77,6 +77,7 @@ export default function ConnectionsClient({ username }) {
 
   return (
     <main className="min-h-screen bg-[#1c1b22] text-white">
+      <AppMobileNav activeItem="Connections" />
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <AppSidebar
           activeItem="Connections"

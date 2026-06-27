@@ -63,6 +63,19 @@ export default function ServicesClient({ username }) {
     loadInitialServices();
   }, [loadServices]);
 
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === "Escape") {
+        setSelectedService(null);
+        setServiceDetail(null);
+      }
+    }
+
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, []);
+
   async function restartService(service) {
     setRestarting(service);
 
@@ -318,81 +331,104 @@ export default function ServicesClient({ username }) {
                 </div>
               </section>
 
-              {selectedService ? (
-                <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="text-xl font-bold tracking-normal">Service Details</h2>
-                      <p className="mt-1 break-all text-sm text-white/56">{selectedService}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
-                        onClick={() => loadServiceDetail(selectedService)}
-                        type="button"
-                      >
-                        Refresh Detail
-                      </button>
-                      <button
-                        className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
-                        onClick={() => {
-                          setSelectedService(null);
-                          setServiceDetail(null);
-                        }}
-                        type="button"
-                      >
-                        Close
-                      </button>
-                    </div>
-                  </div>
-
-                  {detailLoading ? (
-                    <p className="rounded-md bg-black/20 px-4 py-5 text-sm text-white/58">
-                      Loading service details...
-                    </p>
-                  ) : null}
-
-                  {serviceDetail?.error ? (
-                    <p className="mb-4 rounded-md border border-[#e95420]/40 bg-[#e95420]/12 px-4 py-3 text-sm text-white/70">
-                      {serviceDetail.error}
-                    </p>
-                  ) : null}
-
-                  <div className="grid gap-5 xl:grid-cols-2">
-                    <div>
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <h3 className="font-bold text-white">systemctl status</h3>
-                        {serviceDetail?.statusError ? (
-                          <span className="rounded-full bg-[#e95420]/18 px-3 py-1 text-xs font-bold text-[#ffb088]">
-                            status error
-                          </span>
-                        ) : null}
-                      </div>
-                      <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-xs leading-5 text-white/72">
-                        {serviceDetail?.status || "No status output."}
-                      </pre>
-                    </div>
-
-                    <div>
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <h3 className="font-bold text-white">journalctl latest logs</h3>
-                        {serviceDetail?.journalError ? (
-                          <span className="rounded-full bg-[#e95420]/18 px-3 py-1 text-xs font-bold text-[#ffb088]">
-                            journal error
-                          </span>
-                        ) : null}
-                      </div>
-                      <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-xs leading-5 text-white/72">
-                        {serviceDetail?.journal || "No journal output."}
-                      </pre>
-                    </div>
-                  </div>
-                </section>
-              ) : null}
             </div>
           </div>
         </section>
       </div>
+
+      {selectedService ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            aria-label="Close service details"
+            className="absolute inset-0 cursor-default"
+            onClick={() => {
+              setSelectedService(null);
+              setServiceDetail(null);
+            }}
+            type="button"
+          />
+
+          <section className="relative z-10 grid max-h-[90vh] w-full max-w-7xl overflow-hidden rounded-lg border border-white/10 bg-[#111111] shadow-2xl shadow-black/50">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#ffb088]">
+                  Service Details
+                </p>
+                <h2 className="mt-1 break-all text-2xl font-bold tracking-normal">
+                  {selectedService}
+                </h2>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                  onClick={() => loadServiceDetail(selectedService)}
+                  type="button"
+                >
+                  Refresh
+                </button>
+                <button
+                  className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                  onClick={() => {
+                    setSelectedService(null);
+                    setServiceDetail(null);
+                  }}
+                  type="button"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-auto p-5">
+              {detailLoading ? (
+                <p className="rounded-md bg-black/20 px-4 py-5 text-sm text-white/58">
+                  Loading service details...
+                </p>
+              ) : null}
+
+              {serviceDetail?.error ? (
+                <p className="mb-4 rounded-md border border-[#e95420]/40 bg-[#e95420]/12 px-4 py-3 text-sm text-white/70">
+                  {serviceDetail.error}
+                </p>
+              ) : null}
+
+              <div className="grid gap-5 xl:grid-cols-2">
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="font-bold text-white">systemctl status</h3>
+                    {serviceDetail?.statusError ? (
+                      <span className="rounded-full bg-[#e95420]/18 px-3 py-1 text-xs font-bold text-[#ffb088]">
+                        status error
+                      </span>
+                    ) : null}
+                  </div>
+                  <pre className="max-h-[62vh] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-xs leading-5 text-white/72">
+                    {serviceDetail?.status || "No status output."}
+                  </pre>
+                </div>
+
+                <div>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="font-bold text-white">journalctl latest logs</h3>
+                    {serviceDetail?.journalError ? (
+                      <span className="rounded-full bg-[#e95420]/18 px-3 py-1 text-xs font-bold text-[#ffb088]">
+                        journal error
+                      </span>
+                    ) : null}
+                  </div>
+                  <pre className="max-h-[62vh] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-xs leading-5 text-white/72">
+                    {serviceDetail?.journal || "No journal output."}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

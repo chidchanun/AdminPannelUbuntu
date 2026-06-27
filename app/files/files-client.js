@@ -121,10 +121,9 @@ function EntryIcon({ type }) {
   return <FileIcon />;
 }
 
-export default function FilesClient({ username }) {
+export default function FilesClient({ initialPath, username }) {
   const [data, setData] = useState(null);
-  const [currentPath, setCurrentPath] = useState("");
-  const [pathInput, setPathInput] = useState("");
+  const [pathInput, setPathInput] = useState(initialPath || "");
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -141,7 +140,6 @@ export default function FilesClient({ username }) {
       }
 
       setData(payload);
-      setCurrentPath(payload.path);
       setPathInput(payload.path);
       setError(null);
     } catch (loadError) {
@@ -153,11 +151,11 @@ export default function FilesClient({ username }) {
 
   useEffect(() => {
     async function loadInitialDirectory() {
-      await loadDirectory("");
+      await loadDirectory(initialPath || "");
     }
 
     loadInitialDirectory();
-  }, [loadDirectory]);
+  }, [initialPath, loadDirectory]);
 
   function submitPath(event) {
     event.preventDefault();
@@ -262,7 +260,8 @@ export default function FilesClient({ username }) {
                       <col className="w-[12%]" />
                       <col className="w-[14%]" />
                       <col className="w-[20%]" />
-                      <col className="w-[14%]" />
+                      <col className="w-[10%]" />
+                      <col className="w-[4%]" />
                     </colgroup>
                     <thead className="bg-black/24 text-white/48">
                       <tr className="border-b border-white/10">
@@ -271,6 +270,7 @@ export default function FilesClient({ username }) {
                         <th className="px-4 py-3 font-semibold">Size</th>
                         <th className="px-4 py-3 font-semibold">Modified</th>
                         <th className="px-4 py-3 font-semibold">Mode</th>
+                        <th className="px-4 py-3 font-semibold">Edit</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -301,11 +301,23 @@ export default function FilesClient({ username }) {
                           <td className="px-4 py-3 text-white/70">{formatBytes(item.size)}</td>
                           <td className="px-4 py-3 text-white/70">{formatDate(item.modifiedAt)}</td>
                           <td className="px-4 py-3 text-white/70">{item.mode || "-"}</td>
+                          <td className="px-4 py-3">
+                            {item.type === "file" ? (
+                              <Link
+                                className="rounded-md border border-white/14 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-white/10"
+                                href={`/editor?path=${encodeURIComponent(item.path)}`}
+                              >
+                                Edit
+                              </Link>
+                            ) : (
+                              <span className="text-white/28">-</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                       {!isLoading && (data?.items || []).length === 0 ? (
                         <tr>
-                          <td className="px-4 py-8 text-center text-white/52" colSpan={5}>
+                          <td className="px-4 py-8 text-center text-white/52" colSpan={6}>
                             This directory is empty.
                           </td>
                         </tr>

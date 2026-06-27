@@ -1,9 +1,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { readSessionValue, SESSION_COOKIE } from "@/lib/auth-session";
-import FilesClient from "./files-client";
+import EditorClient from "./editor-client";
 
-export default async function FilesPage({ searchParams }) {
+export default async function EditorPage({ searchParams }) {
   const cookieStore = await cookies();
   const session = readSessionValue(cookieStore.get(SESSION_COOKIE)?.value);
 
@@ -13,5 +13,5 @@ export default async function FilesPage({ searchParams }) {
 
   const params = await searchParams;
 
-  return <FilesClient initialPath={params?.path || ""} username={session.username} />;
+  return <EditorClient initialPath={params?.path || ""} username={session.username} />;
 }

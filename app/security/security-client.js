@@ -24,6 +24,14 @@ function actionLabel(action) {
     return "Firewall blocked";
   }
 
+  if (action === "whitelist-add") {
+    return "Whitelisted";
+  }
+
+  if (action === "whitelist-remove") {
+    return "Removed whitelist";
+  }
+
   return action === "block" ? "Blocked" : "Unblocked";
 }
 
@@ -82,6 +90,7 @@ function ToggleButton({ checked, disabled, label, onToggle, tone = "safe" }) {
 export default function SecurityClient({ username }) {
   const [data, setData] = useState(null);
   const [manualIp, setManualIp] = useState("");
+  const [whitelistEntry, setWhitelistEntry] = useState("");
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -143,6 +152,39 @@ export default function SecurityClient({ username }) {
     }
   }
 
+  async function changeWhitelist(action, entry) {
+    try {
+      const response = await fetch("/api/security", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action, entry }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Security API returned ${response.status}`);
+      }
+
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              settings: payload.settings,
+            }
+          : current,
+      );
+      setMessage(`${actionLabel(action)} ${entry}`);
+      setError(null);
+      setWhitelistEntry("");
+      await loadSecurity();
+    } catch (whitelistError) {
+      setError(whitelistError.message);
+      setMessage(null);
+    }
+  }
+
   async function updateSetting(key, value) {
     setSavingSetting(key);
 
@@ -189,6 +231,14 @@ export default function SecurityClient({ username }) {
 
     if (manualIp.trim()) {
       changeBlock("block", manualIp.trim());
+    }
+  }
+
+  function submitWhitelist(event) {
+    event.preventDefault();
+
+    if (whitelistEntry.trim()) {
+      changeWhitelist("whitelist-add", whitelistEntry.trim());
     }
   }
 
@@ -369,6 +419,53 @@ export default function SecurityClient({ username }) {
                     UFW Block
                   </button>
                 </form>
+              </section>
+
+              <section className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
+                  <div>
+                    <h2 className="text-xl font-bold tracking-normal">Whitelist</h2>
+                    <p className="mt-2 text-sm leading-6 text-white/58">
+                      Whitelisted IPs are skipped by app block, auto block, and manual block.
+                    </p>
+                  </div>
+                  <form className="flex flex-wrap gap-3" onSubmit={submitWhitelist}>
+                    <input
+                      className="h-11 min-w-64 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                      onChange={(event) => setWhitelistEntry(event.target.value)}
+                      placeholder="IP or CIDR"
+                      value={whitelistEntry}
+                    />
+                    <button
+                      className="h-11 rounded-md bg-emerald-500 px-5 text-sm font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!whitelistEntry.trim()}
+                      type="submit"
+                    >
+                      Add
+                    </button>
+                  </form>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {(data?.settings?.whitelistIps || []).map((entry) => (
+                    <span
+                      className="inline-flex items-center gap-2 rounded-md border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm font-semibold text-emerald-100"
+                      key={entry}
+                    >
+                      {entry}
+                      <button
+                        className="rounded bg-white/10 px-2 py-0.5 text-xs text-white transition hover:bg-white/20"
+                        onClick={() => changeWhitelist("whitelist-remove", entry)}
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    </span>
+                  ))}
+                  {(data?.settings?.whitelistIps || []).length === 0 ? (
+                    <EmptyState>No whitelist entries.</EmptyState>
+                  ) : null}
+                </div>
               </section>
 
               <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">

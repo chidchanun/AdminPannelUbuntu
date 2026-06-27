@@ -3,15 +3,17 @@ import { canManageFirewall, getSessionFromRequest, isAdminUser } from "@/lib/acc
 import { writeAuditLog } from "@/lib/audit-log";
 import { blockFirewallIp, isValidFirewallTarget } from "@/lib/firewall-control";
 import {
+  addWhitelistEntry,
   loadPersistentBlocks,
   persistBlock,
   persistCurrentBlocks,
+  removeWhitelistEntry,
   removePersistentBlock,
   getSecuritySettings,
   updateSecuritySettings,
 } from "@/lib/security-block-store";
 import { getServerSecuritySnapshot } from "@/lib/server-security-monitor";
-import { getThreatSnapshot } from "@/lib/threat-guard";
+import { getThreatSnapshot, isWhitelistedIp } from "@/lib/threat-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,7 +80,10 @@ function collectAutoBlockCandidates(server, settings) {
       return false;
     }
 
-    return settings.autoBlockPrivateIps || !isPrivateOrLocalIp(item.ip);
+    return (
+      !isWhitelistedIp(item.ip) &&
+      (settings.autoBlockPrivateIps || !isPrivateOrLocalIp(item.ip))
+    );
   });
 }
 
@@ -197,6 +202,44 @@ export async function POST(request) {
     return NextResponse.json({ ok: true, settings });
   }
 
+  if (action === "whitelist-add") {
+    const entry = String(body?.entry || "").trim();
+
+    if (!entry || !isValidFirewallTarget(entry)) {
+      return NextResponse.json({ error: "Valid IP or CIDR is required." }, { status: 400 });
+    }
+
+    const settings = await addWhitelistEntry(entry);
+    const removed = await removePersistentBlock(entry);
+
+    await writeAuditLog({
+      action: "security.whitelist.add",
+      entry,
+      removedExistingBlock: removed,
+      user: session.username,
+    });
+
+    return NextResponse.json({ ok: true, settings });
+  }
+
+  if (action === "whitelist-remove") {
+    const entry = String(body?.entry || "").trim();
+
+    if (!entry) {
+      return NextResponse.json({ error: "Whitelist entry is required." }, { status: 400 });
+    }
+
+    const settings = await removeWhitelistEntry(entry);
+
+    await writeAuditLog({
+      action: "security.whitelist.remove",
+      entry,
+      user: session.username,
+    });
+
+    return NextResponse.json({ ok: true, settings });
+  }
+
   const ip = String(body?.ip || "").trim();
 
   if (!ip) {
@@ -204,6 +247,12 @@ export async function POST(request) {
   }
 
   if (action === "block") {
+    await getSecuritySettings();
+
+    if (isWhitelistedIp(ip)) {
+      return NextResponse.json({ error: "IP is whitelisted and cannot be blocked." }, { status: 409 });
+    }
+
     await persistBlock(ip, "manual block", {
       source: "security page",
       user: session.username,
@@ -237,6 +286,15 @@ export async function POST(request) {
     }
 
     try {
+      await getSecuritySettings();
+
+      if (isWhitelistedIp(ip)) {
+        return NextResponse.json(
+          { error: "IP is whitelisted and cannot be firewall blocked." },
+          { status: 409 },
+        );
+      }
+
       const result = await blockFirewallIp(ip);
 
       await persistBlock(ip, "firewall block requested", {

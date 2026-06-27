@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getClientIp, inspectRequest } from "@/lib/threat-guard";
 
+const RECOVERY_PATHS = ["/security", "/api/security", "/api/logout"];
+
 export function proxy(request) {
+  if (RECOVERY_PATHS.some((path) => request.nextUrl.pathname.startsWith(path))) {
+    return NextResponse.next();
+  }
+
   const ip = getClientIp(request);
   const result = inspectRequest({
     ip,

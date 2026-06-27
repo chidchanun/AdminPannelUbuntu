@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 
 const SYSTEMCTL_PATH = process.env.SYSTEMCTL_PATH || "systemctl";
 const SUDO_PATH = process.env.SUDO_PATH || "sudo";
+const JOURNALCTL_PATH = process.env.JOURNALCTL_PATH || "journalctl";
 
 function parseList(value) {
   return String(value || "")
@@ -31,6 +32,12 @@ function getServiceNames() {
 
 function normalizeServiceName(name) {
   return String(name || "").trim().replace(/\.service$/i, "");
+}
+
+function normalizeUnitName(name) {
+  const normalized = normalizeServiceName(name);
+
+  return normalized ? `${normalized}.service` : "";
 }
 
 function resolveAllowedService(serviceName) {
@@ -141,11 +148,86 @@ async function listAllServices() {
   }
 }
 
+async function readServiceDetails(serviceName) {
+  const unit = normalizeUnitName(serviceName);
+
+  if (!unit) {
+    return { error: "Service name is required.", service: serviceName };
+  }
+
+  if (process.platform !== "linux") {
+    return {
+      error: "Service details require Linux systemctl and journalctl.",
+      journal: "",
+      service: unit,
+      status: "",
+    };
+  }
+
+  const detail = {
+    error: null,
+    journal: "",
+    journalError: null,
+    service: unit,
+    status: "",
+    statusError: null,
+  };
+
+  try {
+    const { stdout, stderr } = await execFileAsync(SYSTEMCTL_PATH, [
+      "status",
+      unit,
+      "--no-pager",
+      "--lines=40",
+    ]);
+
+    detail.status = [stdout, stderr].filter(Boolean).join("\n").trim();
+  } catch (error) {
+    detail.status = [error.stdout, error.stderr].filter(Boolean).join("\n").trim();
+    detail.statusError = error.message;
+  }
+
+  try {
+    const { stdout, stderr } = await execFileAsync(JOURNALCTL_PATH, [
+      "-u",
+      unit,
+      "--no-pager",
+      "-n",
+      "120",
+      "-o",
+      "short-iso",
+    ]);
+
+    detail.journal = [stdout, stderr].filter(Boolean).join("\n").trim();
+  } catch (error) {
+    detail.journal = [error.stdout, error.stderr].filter(Boolean).join("\n").trim();
+    detail.journalError = error.message;
+  }
+
+  if (detail.statusError && detail.journalError) {
+    detail.error = `${detail.statusError}; ${detail.journalError}`;
+  }
+
+  return detail;
+}
+
 export async function GET(request) {
   const session = getSessionFromRequest(request);
 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const serviceName = searchParams.get("service");
+
+  if (serviceName) {
+    const detail = await readServiceDetails(serviceName);
+
+    return NextResponse.json({
+      detail,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   const result = await listAllServices();

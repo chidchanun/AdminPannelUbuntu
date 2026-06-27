@@ -29,6 +29,9 @@ export default function ServicesClient({ username }) {
   const [filter, setFilter] = useState("all");
   const [message, setMessage] = useState(null);
   const [query, setQuery] = useState("");
+  const [selectedService, setSelectedService] = useState(null);
+  const [serviceDetail, setServiceDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [restarting, setRestarting] = useState(null);
 
@@ -85,6 +88,31 @@ export default function ServicesClient({ username }) {
       setMessage(null);
     } finally {
       setRestarting(null);
+    }
+  }
+
+  async function loadServiceDetail(service) {
+    setSelectedService(service);
+    setDetailLoading(true);
+
+    try {
+      const response = await fetch(
+        `/api/services?service=${encodeURIComponent(service)}`,
+        { cache: "no-store" },
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Services API returned ${response.status}`);
+      }
+
+      setServiceDetail(payload.detail);
+      setError(null);
+    } catch (detailError) {
+      setError(detailError.message);
+      setServiceDetail(null);
+    } finally {
+      setDetailLoading(false);
     }
   }
 
@@ -234,7 +262,7 @@ export default function ServicesClient({ username }) {
 
                   {filteredServices.map((service) => (
                     <div
-                      className="grid gap-3 rounded-md border border-white/10 bg-white/[0.04] p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center"
+                      className="grid gap-3 rounded-md border border-white/10 bg-white/[0.04] p-4 lg:grid-cols-[1fr_auto_auto_auto] lg:items-center"
                       key={service.name}
                     >
                       <div>
@@ -263,10 +291,23 @@ export default function ServicesClient({ username }) {
                           {restarting === service.restartTarget ? "Restarting" : "Restart"}
                         </button>
                       ) : (
-                        <span className="rounded-md border border-white/10 px-4 py-2 text-center text-sm font-semibold text-white/42">
-                          View only
-                        </span>
+                        <button
+                          className="h-10 rounded-md border border-white/10 px-4 text-sm font-semibold text-white/62 transition hover:bg-white/10"
+                          onClick={() => loadServiceDetail(service.name)}
+                          type="button"
+                        >
+                          Details
+                        </button>
                       )}
+                      {service.restartAllowed ? (
+                        <button
+                          className="h-10 rounded-md border border-white/10 px-4 text-sm font-semibold text-white/62 transition hover:bg-white/10"
+                          onClick={() => loadServiceDetail(service.name)}
+                          type="button"
+                        >
+                          Details
+                        </button>
+                      ) : null}
                     </div>
                   ))}
                   {!isLoading && filteredServices.length === 0 ? (
@@ -276,6 +317,78 @@ export default function ServicesClient({ username }) {
                   ) : null}
                 </div>
               </section>
+
+              {selectedService ? (
+                <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-bold tracking-normal">Service Details</h2>
+                      <p className="mt-1 break-all text-sm text-white/56">{selectedService}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                        onClick={() => loadServiceDetail(selectedService)}
+                        type="button"
+                      >
+                        Refresh Detail
+                      </button>
+                      <button
+                        className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                        onClick={() => {
+                          setSelectedService(null);
+                          setServiceDetail(null);
+                        }}
+                        type="button"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+
+                  {detailLoading ? (
+                    <p className="rounded-md bg-black/20 px-4 py-5 text-sm text-white/58">
+                      Loading service details...
+                    </p>
+                  ) : null}
+
+                  {serviceDetail?.error ? (
+                    <p className="mb-4 rounded-md border border-[#e95420]/40 bg-[#e95420]/12 px-4 py-3 text-sm text-white/70">
+                      {serviceDetail.error}
+                    </p>
+                  ) : null}
+
+                  <div className="grid gap-5 xl:grid-cols-2">
+                    <div>
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <h3 className="font-bold text-white">systemctl status</h3>
+                        {serviceDetail?.statusError ? (
+                          <span className="rounded-full bg-[#e95420]/18 px-3 py-1 text-xs font-bold text-[#ffb088]">
+                            status error
+                          </span>
+                        ) : null}
+                      </div>
+                      <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-xs leading-5 text-white/72">
+                        {serviceDetail?.status || "No status output."}
+                      </pre>
+                    </div>
+
+                    <div>
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <h3 className="font-bold text-white">journalctl latest logs</h3>
+                        {serviceDetail?.journalError ? (
+                          <span className="rounded-full bg-[#e95420]/18 px-3 py-1 text-xs font-bold text-[#ffb088]">
+                            journal error
+                          </span>
+                        ) : null}
+                      </div>
+                      <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-4 text-xs leading-5 text-white/72">
+                        {serviceDetail?.journal || "No journal output."}
+                      </pre>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
             </div>
           </div>
         </section>

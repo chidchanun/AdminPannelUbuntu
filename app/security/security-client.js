@@ -24,6 +24,10 @@ function actionLabel(action) {
     return "Firewall blocked";
   }
 
+  if (action === "firewall-unblock") {
+    return "Firewall unblocked";
+  }
+
   if (action === "whitelist-add") {
     return "Whitelisted";
   }
@@ -186,6 +190,16 @@ export default function SecurityClient({ username }) {
   }
 
   async function updateSetting(key, value) {
+    if (
+      key === "autoFirewallBlock" &&
+      value &&
+      !window.confirm(
+        "Enable UFW Auto Block? This can block IPs at the server firewall level. Make sure your current IP is whitelisted first.",
+      )
+    ) {
+      return;
+    }
+
     setSavingSetting(key);
 
     try {
@@ -331,6 +345,36 @@ export default function SecurityClient({ username }) {
                   <p className="text-sm font-semibold text-emerald-100">{message}</p>
                 </section>
               ) : null}
+
+              <section
+                className={`rounded-lg border p-5 ${
+                  data?.client?.whitelisted
+                    ? "border-emerald-400/30 bg-emerald-400/10"
+                    : "border-[#e95420]/50 bg-[#e95420]/14"
+                }`}
+              >
+                <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div>
+                    <h2 className="text-xl font-bold tracking-normal">Your Current IP</h2>
+                    <p className="mt-2 break-all text-sm leading-6 text-white/70">
+                      {data?.client?.ip || "unknown"}
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-white/58">
+                      {data?.client?.whitelisted
+                        ? "This IP is in whitelist and will not be auto blocked."
+                        : "This IP is not whitelisted. Add it before enabling UFW Auto."}
+                    </p>
+                  </div>
+                  <button
+                    className="h-11 rounded-md bg-emerald-500 px-5 text-sm font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!data?.client?.ip || data.client.ip === "unknown" || data?.client?.whitelisted}
+                    onClick={() => changeWhitelist("whitelist-add", data.client.ip)}
+                    type="button"
+                  >
+                    Add Current IP
+                  </button>
+                </div>
+              </section>
 
               <section className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
                 <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-start">
@@ -590,13 +634,22 @@ export default function SecurityClient({ username }) {
                           Expires: {formatTime(item.expiresAtIso)}
                         </p>
                       </div>
-                      <button
-                        className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
-                        onClick={() => changeBlock("unblock", item.ip)}
-                        type="button"
-                      >
-                        Unblock
-                      </button>
+                      <div className="flex flex-wrap gap-2 lg:justify-end">
+                        <button
+                          className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                          onClick={() => changeBlock("unblock", item.ip)}
+                          type="button"
+                        >
+                          Unblock
+                        </button>
+                        <button
+                          className="h-10 rounded-md border border-[#e95420]/60 px-4 text-sm font-semibold text-[#ffb088] transition hover:bg-[#e95420]/16"
+                          onClick={() => changeBlock("firewall-unblock", item.ip)}
+                          type="button"
+                        >
+                          UFW Unblock
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {(data?.blocked || []).length === 0 ? (

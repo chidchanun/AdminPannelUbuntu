@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { canManageFirewall, getSessionFromRequest, isAdminUser } from "@/lib/access-control";
 import { writeAuditLog } from "@/lib/audit-log";
-import { blockFirewallIp, isValidFirewallTarget } from "@/lib/firewall-control";
+import { blockFirewallIp, isValidFirewallTarget, unblockFirewallIp } from "@/lib/firewall-control";
 import {
   addWhitelistEntry,
   loadPersistentBlocks,
@@ -13,7 +13,7 @@ import {
   updateSecuritySettings,
 } from "@/lib/security-block-store";
 import { getServerSecuritySnapshot } from "@/lib/server-security-monitor";
-import { getThreatSnapshot, isWhitelistedIp } from "@/lib/threat-guard";
+import { getClientIp, getThreatSnapshot, isWhitelistedIp } from "@/lib/threat-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -162,11 +162,16 @@ export async function GET(request) {
   const settings = await getSecuritySettings();
   const server = await getServerSecuritySnapshot();
   const autoBlocks = await applyAutoBlocks(server, settings);
+  const clientIp = getClientIp(request);
   await persistCurrentBlocks();
 
   return NextResponse.json({
     ...getThreatSnapshot(),
     autoBlocks,
+    client: {
+      ip: clientIp,
+      whitelisted: isWhitelistedIp(clientIp),
+    },
     server,
     settings,
     updatedAt: new Date().toISOString(),
@@ -313,6 +318,36 @@ export async function POST(request) {
     } catch (firewallError) {
       await writeAuditLog({
         action: "security.firewall.block.failed",
+        error: firewallError.message,
+        ip,
+        user: session.username,
+      });
+
+      return NextResponse.json({ error: firewallError.message }, { status: 500 });
+    }
+  }
+
+  if (action === "firewall-unblock") {
+    if (!canManageFirewall(session.username)) {
+      return NextResponse.json({ error: "Firewall permission denied." }, { status: 403 });
+    }
+
+    try {
+      const result = await unblockFirewallIp(ip);
+      const removed = await removePersistentBlock(ip);
+
+      await writeAuditLog({
+        action: "security.firewall.unblock",
+        ip,
+        output: result.output,
+        removedAppBlock: removed,
+        user: session.username,
+      });
+
+      return NextResponse.json({ ok: true, output: result.output, removed });
+    } catch (firewallError) {
+      await writeAuditLog({
+        action: "security.firewall.unblock.failed",
         error: firewallError.message,
         ip,
         user: session.username,

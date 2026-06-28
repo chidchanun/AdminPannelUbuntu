@@ -40,6 +40,8 @@ export async function POST(request) {
     if (body?.action === "add-http") {
       const health = await addHealthTarget({
         label: body.label,
+        logType: body.logType,
+        pm2Name: body.pm2Name,
         type: "http",
         url: body.url,
       });
@@ -47,6 +49,8 @@ export async function POST(request) {
       await writeAuditLog({
         action: "health.target.add",
         label: body.label,
+        logType: body.logType,
+        pm2Name: body.pm2Name,
         type: "http",
         url: body.url,
         user: session.username,

@@ -120,6 +120,16 @@ Each entry can be `Label|target` or just the target. Results appear in `/health`
 
 You can also add website checks from `/health`. Targets added in the UI are saved in `logs/admin-settings.json`; environment targets remain read-only in the UI.
 
+For PM2 apps, choose `PM2 logs` while adding a website and enter the process name, for example:
+
+```text
+Label: ERP Web
+URL: http://localhost:3001
+PM2 process name: erp-web
+```
+
+The Health page will show a `View Logs` button that reads recent output with `pm2 logs <name> --lines 200 --nostream`. Set `PM2_PATH` or `PM2_LOG_LINES` if your server needs different values.
+
 ## Development
 
 ```bash

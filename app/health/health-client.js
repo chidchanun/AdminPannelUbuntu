@@ -13,7 +13,10 @@ export default function HealthClient({ username }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [labelInput, setLabelInput] = useState("");
+  const [logModal, setLogModal] = useState(null);
+  const [logType, setLogType] = useState("none");
   const [message, setMessage] = useState(null);
+  const [pm2Name, setPm2Name] = useState("");
   const [urlInput, setUrlInput] = useState("");
 
   const loadHealth = useCallback(async () => {
@@ -49,6 +52,8 @@ export default function HealthClient({ username }) {
         body: JSON.stringify({
           action: "add-http",
           label: labelInput,
+          logType,
+          pm2Name,
           url: urlInput,
         }),
       });
@@ -59,6 +64,8 @@ export default function HealthClient({ username }) {
       }
 
       setLabelInput("");
+      setLogType("none");
+      setPm2Name("");
       setUrlInput("");
       setMessage("Website health check added.");
       setError(null);
@@ -68,6 +75,39 @@ export default function HealthClient({ username }) {
       setMessage(null);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function viewLogs(target) {
+    setLogModal({
+      isLoading: true,
+      label: target.label,
+      output: "",
+      pm2Name: target.pm2Name,
+    });
+
+    try {
+      const response = await fetch(
+        `/api/health-checks/logs?id=${encodeURIComponent(target.id)}`,
+        { cache: "no-store" },
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Health log API returned ${response.status}`);
+      }
+
+      setLogModal({
+        ...payload,
+        isLoading: false,
+      });
+      setError(null);
+    } catch (logError) {
+      setLogModal((current) => ({
+        ...current,
+        error: logError.message,
+        isLoading: false,
+      }));
     }
   }
 
@@ -189,26 +229,49 @@ export default function HealthClient({ username }) {
 
               <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
                 <h2 className="text-xl font-bold tracking-normal">Add Website</h2>
-                <form className="mt-5 grid gap-3 lg:grid-cols-[260px_1fr_auto]" onSubmit={addWebsite}>
-                  <input
-                    className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
-                    onChange={(event) => setLabelInput(event.target.value)}
-                    placeholder="Label"
-                    value={labelInput}
-                  />
-                  <input
-                    className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
-                    onChange={(event) => setUrlInput(event.target.value)}
-                    placeholder="https://example.com/health"
-                    value={urlInput}
-                  />
-                  <button
-                    className="h-11 rounded-md bg-[#e95420] px-5 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isSaving || !labelInput.trim() || !urlInput.trim()}
-                    type="submit"
-                  >
-                    {isSaving ? "Saving" : "Add Website"}
-                  </button>
+                <form className="mt-5 grid gap-3" onSubmit={addWebsite}>
+                  <div className="grid gap-3 lg:grid-cols-[260px_1fr_auto]">
+                    <input
+                      className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                      onChange={(event) => setLabelInput(event.target.value)}
+                      placeholder="Label"
+                      value={labelInput}
+                    />
+                    <input
+                      className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                      onChange={(event) => setUrlInput(event.target.value)}
+                      placeholder="http://localhost:3001"
+                      value={urlInput}
+                    />
+                    <button
+                      className="h-11 rounded-md bg-[#e95420] px-5 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isSaving || !labelInput.trim() || !urlInput.trim()}
+                      type="submit"
+                    >
+                      {isSaving ? "Saving" : "Add Website"}
+                    </button>
+                  </div>
+                  <div className="grid gap-3 lg:grid-cols-[220px_1fr]">
+                    <select
+                      className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition focus:border-[#e95420]"
+                      onChange={(event) => setLogType(event.target.value)}
+                      value={logType}
+                    >
+                      <option className="bg-[#111111]" value="none">
+                        No log source
+                      </option>
+                      <option className="bg-[#111111]" value="pm2">
+                        PM2 logs
+                      </option>
+                    </select>
+                    <input
+                      className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420] disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={logType !== "pm2"}
+                      onChange={(event) => setPm2Name(event.target.value)}
+                      placeholder="PM2 process name, e.g. erp-web"
+                      value={pm2Name}
+                    />
+                  </div>
                 </form>
               </section>
 
@@ -251,6 +314,15 @@ export default function HealthClient({ username }) {
                         <span className="rounded-full bg-white/8 px-3 py-1 text-sm font-semibold text-white/62">
                           {item.latencyMs}ms
                         </span>
+                        {item.logType === "pm2" && item.pm2Name ? (
+                          <button
+                            className="h-8 rounded-md border border-emerald-400/25 px-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/10"
+                            onClick={() => viewLogs(item)}
+                            type="button"
+                          >
+                            View Logs
+                          </button>
+                        ) : null}
                         {item.source === "settings" ? (
                           <button
                             className="h-8 rounded-md border border-white/14 px-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
@@ -276,6 +348,43 @@ export default function HealthClient({ username }) {
           </div>
         </section>
       </div>
+      {logModal ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 py-6">
+          <section className="grid max-h-[88vh] w-full max-w-5xl overflow-hidden rounded-lg border border-white/10 bg-[#111111] shadow-2xl shadow-black/50">
+            <header className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 p-5">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#ffb088]">
+                  PM2 Logs
+                </p>
+                <h2 className="mt-2 text-2xl font-bold tracking-normal">{logModal.label}</h2>
+                <p className="mt-1 text-sm text-white/54">{logModal.pm2Name}</p>
+              </div>
+              <button
+                className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                onClick={() => setLogModal(null)}
+                type="button"
+              >
+                Close
+              </button>
+            </header>
+            <div className="overflow-auto p-5">
+              {logModal.isLoading ? (
+                <p className="rounded-md bg-black/20 px-4 py-5 text-sm text-white/58">
+                  Loading PM2 logs...
+                </p>
+              ) : null}
+              {logModal.error ? (
+                <p className="mb-4 rounded-md border border-[#e95420]/50 bg-[#e95420]/14 px-4 py-3 text-sm text-[#ffb088]">
+                  {logModal.error}
+                </p>
+              ) : null}
+              <pre className="min-h-72 overflow-auto rounded-md border border-white/10 bg-black/45 p-4 font-mono text-xs leading-5 text-white/72">
+                {logModal.output || ""}
+              </pre>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

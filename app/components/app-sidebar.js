@@ -9,6 +9,7 @@ const navigationItems = [
   { label: "PM2", href: "/pm2" },
   { label: "Updates", href: "/updates" },
   { label: "Packages", href: "/packages" },
+  { label: "Terminal", href: "/terminal" },
   { label: "Connections", href: "/connections" },
   { label: "Users", href: "/users" },
   { label: "Files", href: "/files" },

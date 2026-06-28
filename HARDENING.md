@@ -69,3 +69,26 @@ sudo -n apt-get install -y --no-install-recommends <package>
 ```
 
 Add narrow sudoers rules for the Node process user. Use `PACKAGE_INSTALL_ALLOW_ANY=true` only when you accept that admins can install any valid apt package name.
+
+## Update + Upgrade
+
+The Updates page can run `apt-get update` followed by `apt-get upgrade -y`.
+
+The Node process user needs non-interactive sudo for:
+
+```bash
+sudo -n apt-get update
+sudo -n apt-get upgrade -y
+```
+
+## Controlled Terminal
+
+The `/terminal` page executes commands with `execFile`, not through a shell, and rejects shell operators such as `;`, `|`, `&`, `$`, backticks, and redirects.
+
+Set the allowlist explicitly in production:
+
+```bash
+TERMINAL_ALLOWED_COMMANDS=uptime,df,free,who,pm2,systemctl,journalctl,ls,pwd
+```
+
+Do not add destructive commands to the allowlist.

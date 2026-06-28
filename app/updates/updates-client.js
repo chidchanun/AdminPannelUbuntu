@@ -23,6 +23,8 @@ export default function UpdatesClient({ username }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const [upgradeOutput, setUpgradeOutput] = useState("");
 
   const loadUpdates = useCallback(async () => {
     setIsLoading(true);
@@ -50,6 +52,38 @@ export default function UpdatesClient({ username }) {
     return () => clearTimeout(timeout);
   }, [loadUpdates]);
 
+  async function runUpdateUpgrade() {
+    if (!window.confirm("Run apt-get update and apt-get upgrade -y on this server?")) {
+      return;
+    }
+
+    setIsUpgrading(true);
+    setUpgradeOutput("");
+
+    try {
+      const response = await fetch("/api/updates", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "update-upgrade" }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Upgrade returned ${response.status}`);
+      }
+
+      setUpgradeOutput(payload.output || "Update and upgrade completed.");
+      setError(null);
+      await loadUpdates();
+    } catch (upgradeError) {
+      setError(upgradeError.message);
+    } finally {
+      setIsUpgrading(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#1c1b22] text-white">
       <AppMobileNav activeItem="Updates" />
@@ -70,14 +104,24 @@ export default function UpdatesClient({ username }) {
                 </p>
                 <h1 className="mt-2 text-3xl font-bold tracking-normal">Ubuntu Update Center</h1>
               </div>
-              <button
-                className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isLoading}
-                onClick={loadUpdates}
-                type="button"
-              >
-                Refresh
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={isLoading || isUpgrading}
+                  onClick={loadUpdates}
+                  type="button"
+                >
+                  Refresh
+                </button>
+                <button
+                  className="h-10 rounded-md bg-[#e95420] px-4 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={isUpgrading}
+                  onClick={runUpdateUpgrade}
+                  type="button"
+                >
+                  {isUpgrading ? "Upgrading" : "Update + Upgrade"}
+                </button>
+              </div>
             </header>
 
             <div className="grid gap-5 py-7">
@@ -115,6 +159,12 @@ export default function UpdatesClient({ username }) {
                         Packages requesting reboot: {data.rebootPackages.join(", ")}
                       </p>
                     </section>
+                  ) : null}
+
+                  {upgradeOutput ? (
+                    <pre className="max-h-[480px] overflow-auto rounded-lg border border-white/10 bg-black/42 p-4 font-mono text-xs leading-6 text-white/72">
+                      {upgradeOutput}
+                    </pre>
                   ) : null}
 
                   <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">

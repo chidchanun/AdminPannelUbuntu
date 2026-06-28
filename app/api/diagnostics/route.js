@@ -146,6 +146,16 @@ async function buildSecurityRecommendations(checks, request) {
     );
   }
 
+  if (!process.env.TERMINAL_ALLOWED_COMMANDS) {
+    recommendations.push(
+      buildRecommendation({
+        detail:
+          "Set TERMINAL_ALLOWED_COMMANDS to the exact commands admins may run from the web terminal.",
+        title: "Review terminal allowlist",
+      }),
+    );
+  }
+
   if (checkMap.get("Localhost whitelist")?.status !== "ok") {
     recommendations.push(
       buildRecommendation({

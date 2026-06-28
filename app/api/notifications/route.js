@@ -69,16 +69,17 @@ export async function GET(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [{ readAuditLog }, { runHealthChecks }, { getHealthSettings }] = await Promise.all([
+  const [{ readAuditLog }, { runHealthChecks }, { getAlertSettings, getHealthSettings }] = await Promise.all([
     import("@/lib/audit-log"),
     import("@/lib/health-checks"),
     import("@/lib/admin-settings"),
   ]);
-  const [audit, health, healthHistory, healthSettings] = await Promise.all([
+  const [audit, health, healthHistory, healthSettings, alertSettings] = await Promise.all([
     readAuditLog({ limit: 300 }),
     runHealthChecks(),
     readHealthHistory(),
     getHealthSettings(),
+    getAlertSettings(),
   ]);
   const security = getThreatSnapshot();
   const notifications = [
@@ -93,6 +94,8 @@ export async function GET(request) {
   ]
     .sort((a, b) => Date.parse(b.at || 0) - Date.parse(a.at || 0))
     .slice(0, 120);
+  const { sendAlertWebhooks } = await import("@/lib/alert-webhooks");
+  const webhookResults = await sendAlertWebhooks(notifications, alertSettings);
 
   return NextResponse.json({
     counts: {
@@ -101,6 +104,7 @@ export async function GET(request) {
       warning: notifications.filter((item) => item.severity === "warning").length,
     },
     notifications,
+    webhookResults,
     updatedAt: new Date().toISOString(),
   });
 }

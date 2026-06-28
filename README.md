@@ -8,15 +8,18 @@ Next.js admin panel for managing an Ubuntu server from a browser. It uses the sa
 - Dashboard with CPU, RAM, disk, temperature, notices, and service health
 - Connections page for active IPs and connection activity
 - File browser with file/folder icons, create file, create folder, and web editor
+- File version restore from editor backups
 - Services page with filtering, detail logs, and start/stop/restart/enable/disable actions
 - Security guard for suspicious path scans, high-rate requests, manual blocks, whitelist, and optional UFW block
+- Security tuning for path scan, rate limit, port spread, and SSH failure thresholds
 - Audit log for admin actions
-- Settings page for service allowlists, security toggles, whitelist, and JSON backup/restore
+- Settings page for service allowlists, security toggles, whitelist, alert webhooks, and JSON backup/restore
 - Users page for `/etc/passwd`, active shell sessions, and recent failed SSH logins
 - Notification center for audit, security, and health notices
 - HTTP/TCP health checks for local apps and server ports
 - PM2 process and log views for apps running on the same server
 - System backup/restore for admin settings, security blocks, and optional health history/audit export
+- Ubuntu Update Center for package update, security update, and reboot-required visibility
 
 ## Requirements
 
@@ -109,6 +112,8 @@ The web editor creates a backup before every successful save. By default backups
 FILE_BACKUP_DIR=/var/backups/ubuntu-admin
 ```
 
+The Editor page can list and restore these backup versions for the currently opened file.
+
 ## Health Checks
 
 Health checks are configured from environment variables:
@@ -146,6 +151,13 @@ HEALTH_HISTORY_MAX_ENTRIES=2500
 ```
 
 Use `Mute 30m` on a Health target during planned maintenance. Muted targets keep recording history, but health alerts and notifications are suppressed until the mute expires.
+
+Alert webhooks can be configured from Settings. The app sends JSON payloads with `content`, `text`,
+`title`, and `notification` fields, so Discord-compatible endpoints work directly and LINE/Telegram
+can be supported through a small relay.
+
+Security thresholds can also be tuned from Settings. Environment variables remain the defaults for
+fresh installs, while saved Settings values override them at runtime.
 
 ## Development
 

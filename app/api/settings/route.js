@@ -80,20 +80,27 @@ export async function GET(request) {
     return error;
   }
 
-  const [{ getServiceSettings }, { getSecuritySettings }] = await Promise.all([
+  const [
+    { getAlertSettings, getSecurityTuningSettings, getServiceSettings },
+    { getSecuritySettings },
+  ] = await Promise.all([
     getAdminSettingsStore(),
     import("@/lib/security-block-store"),
   ]);
-  const [availableServices, service, security] = await Promise.all([
+  const [alerts, availableServices, securityTuning, service, security] = await Promise.all([
+    getAlertSettings(),
     listAvailableServices(),
+    getSecurityTuningSettings(),
     getServiceSettings(),
     getSecuritySettings(),
   ]);
 
   return NextResponse.json({
+    alerts,
     availableServices,
     roles: getRoleSettings(),
     security,
+    securityTuning,
     service,
     updatedAt: new Date().toISOString(),
   });
@@ -120,6 +127,20 @@ export async function POST(request) {
     const { updateServiceSettings } = await getAdminSettingsStore();
 
     updates.service = await updateServiceSettings(body.service);
+  }
+
+  if (body?.alerts) {
+    const { updateAlertSettings } = await getAdminSettingsStore();
+
+    updates.alerts = await updateAlertSettings(body.alerts);
+  }
+
+  if (body?.securityTuning) {
+    const { updateSecurityTuningSettings } = await getAdminSettingsStore();
+    const { setThreatConfig } = await import("@/lib/threat-guard");
+
+    updates.securityTuning = await updateSecurityTuningSettings(body.securityTuning);
+    setThreatConfig(updates.securityTuning);
   }
 
   if (body?.security) {

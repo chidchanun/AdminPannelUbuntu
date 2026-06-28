@@ -51,6 +51,21 @@ function ListField({ label, value, onChange }) {
   );
 }
 
+function NumberField({ label, min = 1, onChange, value }) {
+  return (
+    <label className="grid gap-2">
+      <span className="text-sm font-bold text-white/72">{label}</span>
+      <input
+        className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+        min={min}
+        onChange={(event) => onChange(Number(event.target.value))}
+        type="number"
+        value={value}
+      />
+    </label>
+  );
+}
+
 function ServiceSelectField({ availableServices, label, onChange, value }) {
   const selected = new Set(value || []);
   const options = [...new Set([...availableServices, ...value])]
@@ -140,9 +155,12 @@ export default function SettingsClient({ username }) {
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState(null);
+  const [alerts, setAlerts] = useState(null);
   const [security, setSecurity] = useState(null);
+  const [securityTuning, setSecurityTuning] = useState(null);
   const [service, setService] = useState(null);
   const [roles, setRoles] = useState(null);
+  const [restorePreview, setRestorePreview] = useState(null);
   const [isSystemBackupBusy, setIsSystemBackupBusy] = useState(false);
   const [systemBackup, setSystemBackup] = useState({
     includeAudit: false,
@@ -166,6 +184,11 @@ export default function SettingsClient({ username }) {
         monitoredServices: payload.service.monitoredServices || [],
         restartableServices: payload.service.restartableServices || [],
       });
+      setAlerts({
+        enabled: Boolean(payload.alerts?.enabled),
+        minSeverity: payload.alerts?.minSeverity || "critical",
+        webhookUrls: listToText(payload.alerts?.webhookUrls),
+      });
       setAvailableServices(payload.availableServices || []);
       setSecurity({
         autoAppBlock: Boolean(payload.security.autoAppBlock),
@@ -173,6 +196,7 @@ export default function SettingsClient({ username }) {
         autoFirewallBlock: Boolean(payload.security.autoFirewallBlock),
         whitelistIps: listToText(payload.security.whitelistIps),
       });
+      setSecurityTuning(payload.securityTuning || {});
       setRoles(payload.roles || {});
       setError(null);
     } catch (loadError) {
@@ -202,6 +226,11 @@ export default function SettingsClient({ username }) {
             ...security,
             whitelistIps: textToList(security.whitelistIps),
           },
+          alerts: {
+            ...alerts,
+            webhookUrls: textToList(alerts.webhookUrls),
+          },
+          securityTuning,
           service: {
             controllableServices: service.controllableServices,
             monitoredServices: service.monitoredServices,
@@ -231,6 +260,11 @@ export default function SettingsClient({ username }) {
         ...security,
         whitelistIps: textToList(security.whitelistIps),
       },
+      alerts: {
+        ...alerts,
+        webhookUrls: textToList(alerts.webhookUrls),
+      },
+      securityTuning,
       service,
       version: 1,
     };
@@ -271,6 +305,16 @@ export default function SettingsClient({ username }) {
         autoFirewallBlock: Boolean(payload.security.autoFirewallBlock),
         whitelistIps: listToText(payload.security.whitelistIps),
       });
+      if (payload.alerts) {
+        setAlerts({
+          enabled: Boolean(payload.alerts.enabled),
+          minSeverity: payload.alerts.minSeverity || "critical",
+          webhookUrls: listToText(payload.alerts.webhookUrls),
+        });
+      }
+      if (payload.securityTuning) {
+        setSecurityTuning(payload.securityTuning);
+      }
       setMessage("Backup imported. Review then save settings to apply.");
       setError(null);
     } catch (importError) {
@@ -334,7 +378,43 @@ export default function SettingsClient({ username }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          action: "preview",
           backup,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `System backup API returned ${response.status}`);
+      }
+
+      setRestorePreview({ backup, preview: payload.preview });
+      setMessage("Backup preview loaded. Review before restore.");
+      setError(null);
+    } catch (restoreError) {
+      setError(restoreError.message);
+      setMessage(null);
+    } finally {
+      event.target.value = "";
+      setIsSystemBackupBusy(false);
+    }
+  }
+
+  async function confirmSystemRestore() {
+    if (!restorePreview?.backup) {
+      return;
+    }
+
+    setIsSystemBackupBusy(true);
+
+    try {
+      const response = await fetch("/api/system-backup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          backup: restorePreview.backup,
           restoreHistory: systemBackup.restoreHistory,
         }),
       });
@@ -345,13 +425,13 @@ export default function SettingsClient({ username }) {
       }
 
       setMessage(`System backup restored: ${payload.restored.join(", ")}.`);
+      setRestorePreview(null);
       setError(null);
       await loadSettings();
     } catch (restoreError) {
       setError(restoreError.message);
       setMessage(null);
     } finally {
-      event.target.value = "";
       setIsSystemBackupBusy(false);
     }
   }
@@ -411,7 +491,7 @@ export default function SettingsClient({ username }) {
                 </section>
               ) : null}
 
-              {isLoading || !service || !security ? (
+              {isLoading || !service || !security || !alerts || !securityTuning ? (
                 <p className="rounded-md bg-black/20 px-4 py-5 text-sm text-white/58">
                   Loading settings...
                 </p>
@@ -480,6 +560,119 @@ export default function SettingsClient({ username }) {
                         label="Security Whitelist IPs"
                         onChange={(value) => setSecurity({ ...security, whitelistIps: value })}
                         value={security.whitelistIps}
+                      />
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-bold tracking-normal">Security Tuning</h2>
+                        <p className="mt-2 text-sm leading-6 text-white/56">
+                          Adjust detection thresholds without editing environment variables.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <NumberField
+                        label="Rate Limit / Minute"
+                        onChange={(value) =>
+                          setSecurityTuning({ ...securityTuning, botRateLimitPerMinute: value })
+                        }
+                        value={securityTuning.botRateLimitPerMinute}
+                      />
+                      <NumberField
+                        label="Path Scan Limit"
+                        onChange={(value) =>
+                          setSecurityTuning({ ...securityTuning, botScanLimit: value })
+                        }
+                        value={securityTuning.botScanLimit}
+                      />
+                      <NumberField
+                        label="Block Minutes"
+                        onChange={(value) =>
+                          setSecurityTuning({ ...securityTuning, blockMinutes: value })
+                        }
+                        value={securityTuning.blockMinutes}
+                      />
+                      <NumberField
+                        label="Port Spread Limit"
+                        onChange={(value) =>
+                          setSecurityTuning({ ...securityTuning, portSpreadLimit: value })
+                        }
+                        value={securityTuning.portSpreadLimit}
+                      />
+                      <NumberField
+                        label="Port Connection Limit"
+                        onChange={(value) =>
+                          setSecurityTuning({ ...securityTuning, portConnectionLimit: value })
+                        }
+                        value={securityTuning.portConnectionLimit}
+                      />
+                      <NumberField
+                        label="SYN-RECV Limit"
+                        onChange={(value) =>
+                          setSecurityTuning({ ...securityTuning, synRecvLimit: value })
+                        }
+                        value={securityTuning.synRecvLimit}
+                      />
+                      <NumberField
+                        label="Web Scan Limit"
+                        onChange={(value) =>
+                          setSecurityTuning({ ...securityTuning, webScanLimit: value })
+                        }
+                        value={securityTuning.webScanLimit}
+                      />
+                      <NumberField
+                        label="SSH Failure Limit"
+                        onChange={(value) =>
+                          setSecurityTuning({ ...securityTuning, authFailureLimit: value })
+                        }
+                        value={securityTuning.authFailureLimit}
+                      />
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-bold tracking-normal">Alert Webhooks</h2>
+                        <p className="mt-2 text-sm leading-6 text-white/56">
+                          Send health, security, and audit notices to Discord, LINE relay,
+                          Telegram relay, or any JSON webhook endpoint.
+                        </p>
+                      </div>
+                      <ToggleButton
+                        checked={alerts.enabled}
+                        label="Webhook Alerts"
+                        onToggle={() => setAlerts({ ...alerts, enabled: !alerts.enabled })}
+                      />
+                    </div>
+                    <div className="mt-5 grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+                      <label className="grid gap-2">
+                        <span className="text-sm font-bold text-white/72">Minimum Severity</span>
+                        <select
+                          className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition focus:border-[#e95420]"
+                          onChange={(event) =>
+                            setAlerts({ ...alerts, minSeverity: event.target.value })
+                          }
+                          value={alerts.minSeverity}
+                        >
+                          <option className="bg-[#111111]" value="critical">
+                            Critical
+                          </option>
+                          <option className="bg-[#111111]" value="warning">
+                            Warning
+                          </option>
+                          <option className="bg-[#111111]" value="info">
+                            Info
+                          </option>
+                        </select>
+                      </label>
+                      <ListField
+                        label="Webhook URLs"
+                        onChange={(value) => setAlerts({ ...alerts, webhookUrls: value })}
+                        value={alerts.webhookUrls}
                       />
                     </div>
                   </section>
@@ -602,6 +795,54 @@ export default function SettingsClient({ username }) {
                         }
                       />
                     </div>
+
+                    {restorePreview ? (
+                      <div className="mt-5 rounded-md border border-[#ffb088]/30 bg-[#ffb088]/10 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div>
+                            <h3 className="font-bold">Restore Preview</h3>
+                            <p className="mt-2 text-sm leading-6 text-white/62">
+                              This backup was exported{" "}
+                              {restorePreview.preview.exportedAt
+                                ? new Date(restorePreview.preview.exportedAt).toLocaleString()
+                                : "at an unknown time"}
+                              .
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.12em] text-white/58">
+                              {Object.entries(restorePreview.preview.restorable).map(([key, value]) => (
+                                <span
+                                  className={`rounded border px-2 py-1 ${
+                                    value
+                                      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-100"
+                                      : "border-white/10 bg-black/20"
+                                  }`}
+                                  key={key}
+                                >
+                                  {key}: {value ? "yes" : "no"}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                              onClick={() => setRestorePreview(null)}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="h-10 rounded-md bg-[#e95420] px-4 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
+                              disabled={isSystemBackupBusy}
+                              onClick={confirmSystemRestore}
+                              type="button"
+                            >
+                              Confirm Restore
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </section>
 
                   <div className="flex justify-end">

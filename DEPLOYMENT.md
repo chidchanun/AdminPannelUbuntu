@@ -202,10 +202,31 @@ PM2_PATH=/usr/bin/pm2
 - `System Backup` สำหรับ settings, health targets, security blocks, และ optional health history/audit log
 
 Audit log export ได้เพื่อเก็บหลักฐาน แต่ restore จะไม่เขียนทับ audit log เดิม
+ก่อน restore ระบบจะแสดง preview ว่า backup มี section อะไรบ้าง และต้องกดยืนยันอีกชั้น
 
 แนะนำให้เก็บไฟล์ backup นอก server เป็นระยะ โดยเฉพาะก่อนแก้ sudoers, firewall, หรือ service allowlists
 
-## 10. Troubleshooting
+## 10. Alerts, Updates, And Versions
+
+Alert webhooks ตั้งค่าได้ที่ Settings:
+
+```text
+Webhook URL: Discord webhook, LINE relay, Telegram relay, or any JSON endpoint
+Minimum severity: critical, warning, or info
+```
+
+Payload ที่ส่งมี `content`, `text`, `title`, และ `notification` เพื่อให้ต่อกับ Discord ได้ง่าย ถ้าใช้ LINE/Telegram แนะนำทำ relay เล็ก ๆ รับ JSON แล้วแปลงไปยัง API ของ provider นั้น
+
+หน้า Updates ใช้ `apt list --upgradable` และ `/var/run/reboot-required.pkgs` เพื่อดู package update, security update, และ reboot required โดยยังไม่สั่ง upgrade อัตโนมัติ
+
+หน้า Editor จะสร้าง backup ก่อน save ทุกครั้ง และสามารถ restore version เก่าจากหน้าเว็บได้ ถ้าใช้ `FILE_BACKUP_DIR` แบบรวมศูนย์ ควรกำหนด directory ที่ user ของ panel อ่าน/เขียนได้:
+
+```bash
+sudo mkdir -p /var/backups/ubuntu-admin/files
+sudo chown -R ubuntu-admin:ubuntu-admin /var/backups/ubuntu-admin
+```
+
+## 11. Troubleshooting
 
 `PAM authentication is not configured`
 

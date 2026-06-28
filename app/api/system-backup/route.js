@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromRequest, isAdminUser } from "@/lib/access-control";
-import { createSystemBackup, restoreSystemBackup } from "@/lib/system-backup";
+import { createSystemBackup, previewSystemBackup, restoreSystemBackup } from "@/lib/system-backup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,6 +73,13 @@ export async function POST(request) {
   }
 
   try {
+    if (body?.action === "preview") {
+      return NextResponse.json({
+        ok: true,
+        preview: previewSystemBackup(body.backup || body),
+      });
+    }
+
     const result = await restoreSystemBackup(body.backup || body, {
       restoreHistory: Boolean(body.restoreHistory),
     });

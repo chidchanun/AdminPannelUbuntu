@@ -42,9 +42,38 @@ export default function EditorClient({ initialPath, username }) {
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [backups, setBackups] = useState([]);
+  const [isBackupBusy, setIsBackupBusy] = useState(false);
 
   const isDirty = content !== savedContent;
   const lineCount = useMemo(() => (content ? content.split("\n").length : 1), [content]);
+
+  const loadBackups = useCallback(async (targetPath) => {
+    if (!targetPath) {
+      setBackups([]);
+      return;
+    }
+
+    setIsBackupBusy(true);
+
+    try {
+      const response = await fetch(
+        `/api/file-backups?path=${encodeURIComponent(targetPath)}`,
+        { cache: "no-store" },
+      );
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Backups API returned ${response.status}`);
+      }
+
+      setBackups(payload.backups || []);
+    } catch (backupError) {
+      setError(backupError.message);
+    } finally {
+      setIsBackupBusy(false);
+    }
+  }, []);
 
   const loadFile = useCallback(async (nextPath) => {
     const targetPath = String(nextPath || "").trim();
@@ -74,13 +103,14 @@ export default function EditorClient({ initialPath, username }) {
       setFileInfo(payload);
       setMessage("File loaded.");
       setError(null);
+      await loadBackups(payload.path);
     } catch (loadError) {
       setError(loadError.message);
       setMessage(null);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [loadBackups]);
 
   useEffect(() => {
     async function loadInitialFile() {
@@ -126,11 +156,47 @@ export default function EditorClient({ initialPath, username }) {
       }));
       setMessage(`Saved successfully. Backup: ${payload.backupPath}`);
       setError(null);
+      await loadBackups(currentPath);
     } catch (saveError) {
       setError(saveError.message);
       setMessage(null);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function restoreBackup(backupPath) {
+    if (!currentPath || !backupPath) {
+      return;
+    }
+
+    setIsBackupBusy(true);
+
+    try {
+      const response = await fetch("/api/file-backups", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          backupPath,
+          path: currentPath,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Backups API returned ${response.status}`);
+      }
+
+      setMessage(`Restored from backup: ${payload.restoredFrom}`);
+      setError(null);
+      await loadFile(currentPath);
+    } catch (restoreError) {
+      setError(restoreError.message);
+      setMessage(null);
+    } finally {
+      setIsBackupBusy(false);
     }
   }
 
@@ -261,6 +327,55 @@ export default function EditorClient({ initialPath, username }) {
                   <span className="rounded bg-white/8 px-2 py-1">Ctrl+S: use Save button</span>
                   <span className="rounded bg-white/8 px-2 py-1">Open: load path</span>
                   <span className="rounded bg-white/8 px-2 py-1">Root: FILE_BROWSER_ROOT</span>
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-bold tracking-normal">File Versions</h2>
+                    <p className="mt-2 text-sm leading-6 text-white/56">
+                      Backups are created before each successful save.
+                    </p>
+                  </div>
+                  <button
+                    className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={isBackupBusy || !currentPath}
+                    onClick={() => loadBackups(currentPath)}
+                    type="button"
+                  >
+                    Refresh Versions
+                  </button>
+                </div>
+
+                <div className="mt-5 grid gap-3">
+                  {backups.length > 0 ? (
+                    backups.map((backup) => (
+                      <div
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-white/10 bg-black/20 p-4"
+                        key={backup.path}
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-mono text-sm text-white/82">{backup.name}</p>
+                          <p className="mt-1 text-xs text-white/45">
+                            {new Date(backup.createdAt).toLocaleString()} · {formatBytes(backup.size)}
+                          </p>
+                        </div>
+                        <button
+                          className="h-9 rounded-md bg-[#e95420] px-4 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isBackupBusy}
+                          onClick={() => restoreBackup(backup.path)}
+                          type="button"
+                        >
+                          Restore
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-md bg-black/20 px-4 py-6 text-center text-sm text-white/58">
+                      No backup versions found for this file.
+                    </p>
+                  )}
                 </div>
               </section>
             </div>

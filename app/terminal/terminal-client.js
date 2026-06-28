@@ -66,18 +66,19 @@ export default function TerminalClient({ username }) {
         return;
       }
 
-      setHistory((current) => [
-        ...current,
-        {
-          at: new Date().toISOString(),
-          command,
-          error: response.ok ? "" : payload.error,
-          output: payload.output || payload.error || "",
-          ok: response.ok,
-          prompt: `${username}:${cwd || "~"}$`,
-        },
-      ].slice(0, 30));
-      ].slice(-60));
+      setHistory((current) =>
+        [
+          ...current,
+          {
+            at: new Date().toISOString(),
+            command,
+            error: response.ok ? "" : payload.error,
+            output: payload.output || payload.error || "",
+            ok: response.ok,
+            prompt: `${username}:${cwd || "~"}$`,
+          },
+        ].slice(-60)
+      );
 
       if (nextCwd) {
         setCwd(nextCwd);

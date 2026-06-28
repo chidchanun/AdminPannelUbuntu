@@ -13,6 +13,8 @@ Next.js admin panel for managing an Ubuntu server from a browser. It uses the sa
 - Audit log for admin actions
 - Settings page for service allowlists, security toggles, whitelist, and JSON backup/restore
 - Users page for `/etc/passwd`, active shell sessions, and recent failed SSH logins
+- Notification center for audit, security, and health notices
+- HTTP/TCP health checks for local apps and server ports
 
 ## Requirements
 
@@ -40,6 +42,8 @@ ADMIN_USERS=yourUbuntuUser
 PAM_SERVICE=nextjs
 FILE_BROWSER_ROOT=/home
 AUTH_COOKIE_SECURE=false
+HEALTH_CHECK_URLS=App|http://127.0.0.1:3000,API|http://127.0.0.1:8080/health
+HEALTH_CHECK_PORTS=SSH|127.0.0.1:22,MySQL|127.0.0.1:3306
 ```
 
 Use `AUTH_COOKIE_SECURE=true` when serving through HTTPS.
@@ -94,6 +98,25 @@ AUDIT_LOG_PATH=/var/log/ubuntu-admin/audit.log
 ```
 
 The Settings page can export/import a JSON backup of service allowlists and security settings.
+
+The web editor creates a backup before every successful save. By default backups are stored beside the file under `.admin-backups/`. Override this with:
+
+```bash
+FILE_BACKUP_DIR=/var/backups/ubuntu-admin
+```
+
+## Health Checks
+
+Health checks are configured from environment variables:
+
+```bash
+HEALTH_CHECK_URLS=App|http://127.0.0.1:3000,API|http://127.0.0.1:8080/health
+HEALTH_CHECK_PORTS=SSH|127.0.0.1:22,MySQL|127.0.0.1:3306
+HEALTH_HTTP_TIMEOUT_MS=5000
+HEALTH_TCP_TIMEOUT_MS=3000
+```
+
+Each entry can be `Label|target` or just the target. Results appear in `/health` and unhealthy targets are included in `/notifications`.
 
 ## Development
 

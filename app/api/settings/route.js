@@ -12,6 +12,24 @@ export const dynamic = "force-dynamic";
 const execFileAsync = promisify(execFile);
 const SYSTEMCTL_PATH = process.env.SYSTEMCTL_PATH || "systemctl";
 
+function parseList(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getRoleSettings() {
+  return {
+    adminUsers: parseList(process.env.ADMIN_USERS),
+    fileWriteUsers: parseList(process.env.FILE_WRITE_USERS),
+    firewallUsers: parseList(process.env.FIREWALL_USERS),
+    loginAllowedUsers: parseList(process.env.LOGIN_ALLOWED_USERS),
+    serviceControlUsers: parseList(process.env.SERVICE_CONTROL_USERS),
+    serviceRestartUsers: parseList(process.env.SERVICE_RESTART_USERS),
+  };
+}
+
 function requireAdmin(request) {
   const session = getSessionFromRequest(request);
 
@@ -68,6 +86,7 @@ export async function GET(request) {
 
   return NextResponse.json({
     availableServices,
+    roles: getRoleSettings(),
     security,
     service,
     updatedAt: new Date().toISOString(),

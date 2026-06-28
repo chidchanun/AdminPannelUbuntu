@@ -60,6 +60,65 @@ function BlockButtons({ ip, onAction }) {
   );
 }
 
+function buildIncidentTimeline(data) {
+  const events = (data?.events || []).map((event) => ({
+    at: event.at,
+    detail: event.reason || event.pathname || event.ip || "-",
+    ip: event.ip,
+    source: "guard",
+    title: event.action,
+    tone: event.action?.includes("blocked") ? "critical" : "warning",
+  }));
+  const blocked = (data?.blocked || []).map((item) => ({
+    at: item.blockedAt,
+    detail: item.reason,
+    ip: item.ip,
+    source: "blocklist",
+    title: "Active block",
+    tone: "critical",
+  }));
+  const autoBlocks = (data?.autoBlocks || []).map((item) => ({
+    at: data.updatedAt,
+    detail: item.ok ? item.action : item.error,
+    ip: item.ip,
+    source: "auto",
+    title: item.ok ? "Auto action completed" : "Auto action failed",
+    tone: item.ok ? "warning" : "critical",
+  }));
+
+  return [...events, ...blocked, ...autoBlocks]
+    .sort((a, b) => Date.parse(b.at || 0) - Date.parse(a.at || 0))
+    .slice(0, 40);
+}
+
+function TimelineItem({ item }) {
+  const isCritical = item.tone === "critical";
+
+  return (
+    <div
+      className={`rounded-md border p-4 ${
+        isCritical
+          ? "border-[#e95420]/45 bg-[#e95420]/14"
+          : "border-[#ffb088]/30 bg-[#ffb088]/10"
+      }`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-bold">{item.title}</p>
+          <p className="mt-1 break-words text-sm leading-6 text-white/62">
+            {item.ip ? `${item.ip} - ` : ""}
+            {item.detail}
+          </p>
+        </div>
+        <span className="rounded-full bg-black/20 px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] text-white/50">
+          {item.source}
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-white/38">{formatTime(item.at)}</p>
+    </div>
+  );
+}
+
 function ToggleButton({ checked, disabled, label, onToggle, tone = "safe" }) {
   return (
     <button
@@ -442,6 +501,18 @@ export default function SecurityClient({ username }) {
                     ))}
                   </div>
                 ) : null}
+              </section>
+
+              <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                <h2 className="text-xl font-bold tracking-normal">Incident Timeline</h2>
+                <div className="mt-4 grid gap-3">
+                  {buildIncidentTimeline(data).map((item, index) => (
+                    <TimelineItem item={item} key={`${item.source}-${item.at}-${index}`} />
+                  ))}
+                  {buildIncidentTimeline(data).length === 0 ? (
+                    <EmptyState>No security incidents in memory.</EmptyState>
+                  ) : null}
+                </div>
               </section>
 
               <section className="rounded-lg border border-white/10 bg-white/[0.05] p-5">

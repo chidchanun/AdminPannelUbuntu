@@ -113,6 +113,28 @@ function ServiceSelectField({ availableServices, label, onChange, value }) {
   );
 }
 
+function RoleList({ label, value }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-black/18 p-4">
+      <p className="text-sm font-bold text-white/72">{label}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {(value || []).length > 0 ? (
+          value.map((item) => (
+            <span
+              className="rounded-md border border-white/10 bg-white/8 px-3 py-1.5 text-sm font-semibold text-white/72"
+              key={item}
+            >
+              {item}
+            </span>
+          ))
+        ) : (
+          <span className="text-sm text-white/42">Uses default policy.</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsClient({ username }) {
   const [availableServices, setAvailableServices] = useState([]);
   const [error, setError] = useState(null);
@@ -120,6 +142,7 @@ export default function SettingsClient({ username }) {
   const [message, setMessage] = useState(null);
   const [security, setSecurity] = useState(null);
   const [service, setService] = useState(null);
+  const [roles, setRoles] = useState(null);
 
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
@@ -144,6 +167,7 @@ export default function SettingsClient({ username }) {
         autoFirewallBlock: Boolean(payload.security.autoFirewallBlock),
         whitelistIps: listToText(payload.security.whitelistIps),
       });
+      setRoles(payload.roles || {});
       setError(null);
     } catch (loadError) {
       setError(loadError.message);
@@ -376,6 +400,25 @@ export default function SettingsClient({ username }) {
                         onChange={(value) => setSecurity({ ...security, whitelistIps: value })}
                         value={security.whitelistIps}
                       />
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-bold tracking-normal">Role Permissions</h2>
+                        <p className="mt-2 text-sm leading-6 text-white/56">
+                          These values come from environment variables and are read-only here.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                      <RoleList label="Login Allowed Users" value={roles?.loginAllowedUsers} />
+                      <RoleList label="Admin Users" value={roles?.adminUsers} />
+                      <RoleList label="File Write Users" value={roles?.fileWriteUsers} />
+                      <RoleList label="Service Restart Users" value={roles?.serviceRestartUsers} />
+                      <RoleList label="Service Control Users" value={roles?.serviceControlUsers} />
+                      <RoleList label="Firewall Users" value={roles?.firewallUsers} />
                     </div>
                   </section>
 

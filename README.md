@@ -23,7 +23,7 @@ Next.js admin panel for managing an Ubuntu server from a browser. It uses the sa
 - System backup/restore for admin settings, security blocks, and optional health history/audit export
 - Ubuntu Update Center for package update, security update, and reboot-required visibility
 - Controlled package installer for apt packages with allowlist support
-- Controlled web terminal for allowlisted commands
+- Web terminal for admin shell commands with audit logging
 
 ## Requirements
 
@@ -186,9 +186,13 @@ sudo -n apt-get update
 sudo -n apt-get upgrade -y
 ```
 
-The Terminal page is allowlisted and does not use a shell. Configure allowed commands with:
+The Terminal page runs a full shell by default for admin users and records commands in audit logs.
+Set `TERMINAL_ALLOW_SHELL=false` to return to controlled allowlist mode:
 
 ```bash
+TERMINAL_ALLOW_SHELL=true
+TERMINAL_SHELL=/bin/bash
+TERMINAL_TIMEOUT_MS=30000
 TERMINAL_ALLOWED_COMMANDS=uptime,df,free,who,pm2,systemctl,journalctl,ls,pwd
 ```
 

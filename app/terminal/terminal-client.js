@@ -10,6 +10,8 @@ export default function TerminalClient({ username }) {
   const [error, setError] = useState(null);
   const [history, setHistory] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [shellEnabled, setShellEnabled] = useState(false);
+  const [shellPath, setShellPath] = useState("");
 
   const loadTerminal = useCallback(async () => {
     try {
@@ -22,6 +24,8 @@ export default function TerminalClient({ username }) {
 
       setAllowedCommands(payload.allowedCommands || []);
       setCwd(payload.cwd || "");
+      setShellEnabled(Boolean(payload.shellEnabled));
+      setShellPath(payload.shellPath || "");
       setError(null);
     } catch (loadError) {
       setError(loadError.message);
@@ -82,7 +86,7 @@ export default function TerminalClient({ username }) {
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <AppSidebar
           activeItem="Terminal"
-          helperText="Runs only allowlisted commands without shell operators."
+          helperText="Runs admin terminal commands with audit logging."
           username={username}
         />
 
@@ -94,7 +98,7 @@ export default function TerminalClient({ username }) {
                 <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#ffb088]">
                   Terminal
                 </p>
-                <h1 className="mt-2 text-3xl font-bold tracking-normal">Controlled Terminal</h1>
+                <h1 className="mt-2 text-3xl font-bold tracking-normal">Web Terminal</h1>
               </div>
               <form action="/api/logout" method="post">
                 <button
@@ -117,12 +121,21 @@ export default function TerminalClient({ username }) {
               <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
                 <p className="text-sm text-white/48">Working directory</p>
                 <p className="mt-2 break-all font-mono text-sm text-white/74">{cwd || "-"}</p>
+                <div className="mt-4 rounded-md border border-[#ffb088]/28 bg-[#ffb088]/10 px-4 py-3 text-sm leading-6 text-white/68">
+                  Mode:{" "}
+                  <span className="font-bold text-[#ffb088]">
+                    {shellEnabled ? `Full shell (${shellPath || "default"})` : "Controlled allowlist"}
+                  </span>
+                  {shellEnabled
+                    ? ". Commands are executed by the server shell and recorded in audit logs."
+                    : ". Only allowlisted commands can run."}
+                </div>
 
                 <form className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto]" onSubmit={runCommand}>
                   <input
                     className="h-12 rounded-md border border-white/10 bg-black/32 px-4 font-mono text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
                     onChange={(event) => setCommand(event.target.value)}
-                    placeholder="uptime"
+                    placeholder={shellEnabled ? "sudo systemctl status nginx" : "uptime"}
                     value={command}
                   />
                   <button
@@ -134,18 +147,33 @@ export default function TerminalClient({ username }) {
                   </button>
                 </form>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {allowedCommands.map((item) => (
-                    <button
-                      className="rounded-md border border-white/10 bg-white/8 px-3 py-2 font-mono text-xs text-white/68 transition hover:bg-white/12"
-                      key={item}
-                      onClick={() => setCommand(item)}
-                      type="button"
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
+                {shellEnabled ? (
+                  <div className="mt-4 grid gap-2 text-xs text-white/48 sm:grid-cols-2 xl:grid-cols-4">
+                    {["uptime", "df -h", "free -h", "systemctl status nginx"].map((item) => (
+                      <button
+                        className="rounded-md border border-white/10 bg-white/8 px-3 py-2 font-mono text-left text-white/68 transition hover:bg-white/12"
+                        key={item}
+                        onClick={() => setCommand(item)}
+                        type="button"
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {allowedCommands.map((item) => (
+                      <button
+                        className="rounded-md border border-white/10 bg-white/8 px-3 py-2 font-mono text-xs text-white/68 transition hover:bg-white/12"
+                        key={item}
+                        onClick={() => setCommand(item)}
+                        type="button"
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </section>
 
               <section className="grid gap-4">

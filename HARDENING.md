@@ -81,14 +81,25 @@ sudo -n apt-get update
 sudo -n apt-get upgrade -y
 ```
 
-## Controlled Terminal
+## Web Terminal
 
-The `/terminal` page executes commands with `execFile`, not through a shell, and rejects shell operators such as `;`, `|`, `&`, `$`, backticks, and redirects.
+The `/terminal` page runs a full shell by default for admin users and records commands in audit logs.
+This is powerful and should be exposed only behind HTTPS, strict admin users, and 2FA.
 
-Set the allowlist explicitly in production:
+To disable shell mode and return to controlled command allowlists:
 
 ```bash
+TERMINAL_ALLOW_SHELL=false
 TERMINAL_ALLOWED_COMMANDS=uptime,df,free,who,pm2,systemctl,journalctl,ls,pwd
 ```
 
-Do not add destructive commands to the allowlist.
+Shell mode options:
+
+```bash
+TERMINAL_ALLOW_SHELL=true
+TERMINAL_SHELL=/bin/bash
+TERMINAL_TIMEOUT_MS=30000
+TERMINAL_MAX_BUFFER=1048576
+```
+
+Do not expose shell mode publicly without strong network restrictions.

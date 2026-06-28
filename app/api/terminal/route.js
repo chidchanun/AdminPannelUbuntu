@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import { getSessionFromRequest, isAdminUser } from "@/lib/access-control";
@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 const DEFAULT_ALLOWED_COMMANDS = [
   "df",
   "free",
@@ -31,6 +32,12 @@ function parseList(value, fallback = []) {
 
 function getAllowedCommands() {
   return parseList(process.env.TERMINAL_ALLOWED_COMMANDS, DEFAULT_ALLOWED_COMMANDS);
+}
+
+function isShellTerminalEnabled() {
+  return !["0", "false", "no", "off"].includes(
+    String(process.env.TERMINAL_ALLOW_SHELL ?? "true").toLowerCase(),
+  );
 }
 
 function splitCommand(input) {
@@ -63,6 +70,8 @@ export async function GET(request) {
   return NextResponse.json({
     allowedCommands: getAllowedCommands(),
     cwd: process.cwd(),
+    shellEnabled: isShellTerminalEnabled(),
+    shellPath: process.env.TERMINAL_SHELL || (process.platform === "win32" ? "cmd.exe" : "/bin/bash"),
   });
 }
 
@@ -91,36 +100,62 @@ export async function POST(request) {
     return NextResponse.json({ error: "Command is required." }, { status: 400 });
   }
 
-  if (hasShellOperators(input)) {
-    return NextResponse.json(
-      { error: "Shell operators are not allowed in web terminal commands." },
-      { status: 400 },
-    );
-  }
-
-  const [command, ...args] = splitCommand(input);
-  const allowedCommands = getAllowedCommands();
-
-  if (!allowedCommands.includes(command)) {
-    return NextResponse.json(
-      {
-        allowedCommands,
-        error: `Command "${command}" is not allowed.`,
-      },
-      { status: 403 },
-    );
-  }
-
   try {
-    const { stdout, stderr } = await execFileAsync(command, args, {
-      cwd: process.cwd(),
-      timeout: Number(process.env.TERMINAL_TIMEOUT_MS || 30000),
-    });
+    const timeout = Number(process.env.TERMINAL_TIMEOUT_MS || 30000);
+    const maxBuffer = Number(process.env.TERMINAL_MAX_BUFFER || 1024 * 1024);
+    const shellEnabled = isShellTerminalEnabled();
+    let stdout;
+    let stderr;
+    let auditCommand = input;
+
+    if (shellEnabled) {
+      const result = await execAsync(input, {
+        cwd: process.cwd(),
+        maxBuffer,
+        shell: process.env.TERMINAL_SHELL || (process.platform === "win32" ? "cmd.exe" : "/bin/bash"),
+        timeout,
+      });
+
+      stdout = result.stdout;
+      stderr = result.stderr;
+    } else {
+      if (hasShellOperators(input)) {
+        return NextResponse.json(
+          { error: "Shell operators are not allowed in controlled terminal mode." },
+          { status: 400 },
+        );
+      }
+
+      const [command, ...args] = splitCommand(input);
+      const allowedCommands = getAllowedCommands();
+
+      if (!allowedCommands.includes(command)) {
+        return NextResponse.json(
+          {
+            allowedCommands,
+            error: `Command "${command}" is not allowed.`,
+          },
+          { status: 403 },
+        );
+      }
+
+      auditCommand = command;
+      const result = await execFileAsync(command, args, {
+        cwd: process.cwd(),
+        maxBuffer,
+        timeout,
+      });
+
+      stdout = result.stdout;
+      stderr = result.stderr;
+    }
+
     const output = [stdout, stderr].filter(Boolean).join("\n").trim();
 
     await writeAuditLog({
       action: "terminal.command",
-      command,
+      command: auditCommand,
+      mode: shellEnabled ? "shell" : "controlled",
       user: session.username,
     });
 
@@ -133,8 +168,9 @@ export async function POST(request) {
   } catch (error) {
     await writeAuditLog({
       action: "terminal.command.failed",
-      command,
+      command: input,
       error: error.message,
+      mode: isShellTerminalEnabled() ? "shell" : "controlled",
       user: session.username,
     });
 

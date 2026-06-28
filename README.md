@@ -187,6 +187,8 @@ sudo -n apt-get upgrade -y
 ```
 
 The Terminal page runs a full shell by default for admin users and records commands in audit logs.
+It keeps a per-user working directory for the running server process and supports `cd`, `pwd`, and
+`clear` in the web session.
 Set `TERMINAL_ALLOW_SHELL=false` to return to controlled allowlist mode:
 
 ```bash

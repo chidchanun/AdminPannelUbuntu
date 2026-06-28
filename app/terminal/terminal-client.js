@@ -56,22 +56,38 @@ export default function TerminalClient({ username }) {
         body: JSON.stringify({ command }),
       });
       const payload = await response.json();
+      const nextCwd = payload.cwd || cwd;
+
+      if (payload.clear) {
+        setHistory([]);
+        setCommand("");
+        setCwd(nextCwd);
+        setError(null);
+        return;
+      }
 
       setHistory((current) => [
+        ...current,
         {
           at: new Date().toISOString(),
           command,
           error: response.ok ? "" : payload.error,
           output: payload.output || payload.error || "",
           ok: response.ok,
+          prompt: `${username}:${cwd || "~"}$`,
         },
-        ...current,
       ].slice(0, 30));
+      ].slice(-60));
+
+      if (nextCwd) {
+        setCwd(nextCwd);
+      }
 
       if (!response.ok) {
         setError(payload.error || `Terminal command returned ${response.status}`);
       } else {
         setError(null);
+        setCommand("");
       }
     } catch (runError) {
       setError(runError.message);
@@ -131,22 +147,6 @@ export default function TerminalClient({ username }) {
                     : ". Only allowlisted commands can run."}
                 </div>
 
-                <form className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto]" onSubmit={runCommand}>
-                  <input
-                    className="h-12 rounded-md border border-white/10 bg-black/32 px-4 font-mono text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
-                    onChange={(event) => setCommand(event.target.value)}
-                    placeholder={shellEnabled ? "sudo systemctl status nginx" : "uptime"}
-                    value={command}
-                  />
-                  <button
-                    className="h-12 rounded-md bg-[#e95420] px-6 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isRunning}
-                    type="submit"
-                  >
-                    {isRunning ? "Running" : "Run"}
-                  </button>
-                </form>
-
                 {shellEnabled ? (
                   <div className="mt-4 grid gap-2 text-xs text-white/48 sm:grid-cols-2 xl:grid-cols-4">
                     {["uptime", "df -h", "free -h", "systemctl status nginx"].map((item) => (
@@ -176,35 +176,46 @@ export default function TerminalClient({ username }) {
                 )}
               </section>
 
-              <section className="grid gap-4">
-                {history.length > 0 ? (
-                  history.map((item) => (
-                    <article
-                      className={`rounded-lg border p-4 ${
-                        item.ok
-                          ? "border-white/10 bg-black/32"
-                          : "border-[#e95420]/45 bg-[#e95420]/14"
-                      }`}
-                      key={`${item.at}-${item.command}`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="font-mono text-sm font-bold text-[#ffb088]">
-                          $ {item.command}
+              <section className="rounded-lg border border-white/10 bg-black/50 p-4">
+                <div className="min-h-[52vh] overflow-auto rounded-md bg-black/45 p-4 font-mono text-sm leading-6 text-white/78">
+                  {history.length > 0 ? (
+                    history.map((item) => (
+                      <div className="mb-4" key={`${item.at}-${item.command}`}>
+                        <p className={item.ok ? "text-[#ffb088]" : "text-red-300"}>
+                          {item.prompt} {item.command}
                         </p>
-                        <p className="text-xs text-white/42">
-                          {new Date(item.at).toLocaleString()}
-                        </p>
+                        <pre className="mt-1 whitespace-pre-wrap text-white/74">
+                          {item.output || "(no output)"}
+                        </pre>
                       </div>
-                      <pre className="mt-3 max-h-[460px] overflow-auto whitespace-pre-wrap rounded-md bg-black/35 p-4 font-mono text-xs leading-6 text-white/72">
-                        {item.output || "(no output)"}
-                      </pre>
-                    </article>
-                  ))
-                ) : (
-                  <p className="rounded-md bg-black/20 px-4 py-6 text-center text-sm text-white/58">
-                    Run an allowlisted command to see output.
-                  </p>
-                )}
+                    ))
+                  ) : (
+                    <p className="text-white/40">SSH-like web terminal ready.</p>
+                  )}
+                </div>
+
+                <form
+                  className="mt-3 grid gap-3 lg:grid-cols-[auto_minmax(0,1fr)_auto]"
+                  onSubmit={runCommand}
+                >
+                  <span className="self-center break-all font-mono text-sm font-bold text-[#ffb088]">
+                    {username}:{cwd || "~"}$
+                  </span>
+                  <input
+                    autoFocus
+                    className="h-12 rounded-md border border-white/10 bg-black/32 px-4 font-mono text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                    onChange={(event) => setCommand(event.target.value)}
+                    placeholder={shellEnabled ? "type a command like SSH" : "uptime"}
+                    value={command}
+                  />
+                  <button
+                    className="h-12 rounded-md bg-[#e95420] px-6 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={isRunning}
+                    type="submit"
+                  >
+                    {isRunning ? "Running" : "Run"}
+                  </button>
+                </form>
               </section>
             </div>
           </div>

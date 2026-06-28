@@ -84,6 +84,7 @@ sudo -n apt-get upgrade -y
 ## Web Terminal
 
 The `/terminal` page runs a full shell by default for admin users and records commands in audit logs.
+It keeps a per-user working directory in server memory and supports `cd`, `pwd`, and `clear`.
 This is powerful and should be exposed only behind HTTPS, strict admin users, and 2FA.
 
 To disable shell mode and return to controlled command allowlists:

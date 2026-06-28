@@ -11,17 +11,48 @@ export const dynamic = "force-dynamic";
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
+
 const DEFAULT_ALLOWED_COMMANDS = [
+  "cat",
   "df",
+  "du",
   "free",
+  "grep",
+  "head",
   "journalctl",
   "ls",
+  "nl",
   "pm2",
   "pwd",
+  "sed",
   "systemctl",
+  "tail",
   "uptime",
   "who",
 ];
+
+const INTERACTIVE_COMMANDS = new Set([
+  "nano",
+  "vim",
+  "vi",
+  "view",
+  "emacs",
+  "top",
+  "htop",
+  "less",
+  "more",
+  "man",
+  "mysql",
+  "psql",
+  "sqlite3",
+  "ssh",
+  "sftp",
+  "ftp",
+  "telnet",
+  "su",
+  "passwd",
+  "sudoedit",
+]);
 
 function parseList(value, fallback = []) {
   const items = String(value || "")
@@ -59,7 +90,7 @@ function setSessionCwd(username, cwd) {
 
 function isShellTerminalEnabled() {
   return !["0", "false", "no", "off"].includes(
-    String(process.env.TERMINAL_ALLOW_SHELL ?? "true").toLowerCase(),
+    String(process.env.TERMINAL_ALLOW_SHELL ?? "true").toLowerCase()
   );
 }
 
@@ -77,6 +108,66 @@ function splitCommand(input) {
 
 function hasShellOperators(input) {
   return /[;&|`$<>]/.test(input);
+}
+
+function stripAnsi(value) {
+  return String(value || "")
+    .replace(
+      // eslint-disable-next-line no-control-regex
+      /[\u001b\u009b][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g,
+      ""
+    )
+    .replace(/\r/g, "");
+}
+
+function getExecutableName(input) {
+  const tokens = splitCommand(input.trim());
+
+  if (tokens.length === 0) {
+    return "";
+  }
+
+  let index = 0;
+
+  // รองรับ sudo nano proxy.js
+  if (tokens[index] === "sudo") {
+    index += 1;
+
+    // ข้าม option ของ sudo เช่น sudo -u root nano file
+    while (tokens[index]?.startsWith("-")) {
+      index += 1;
+
+      // option บางตัวมี value ต่อท้าย เช่น -u root
+      if (["-u", "-g", "-h", "-p"].includes(tokens[index - 1])) {
+        index += 1;
+      }
+    }
+  }
+
+  // รองรับ env VAR=value command
+  if (tokens[index] === "env") {
+    index += 1;
+  }
+
+  while (tokens[index]?.includes("=") && !tokens[index]?.startsWith("=")) {
+    index += 1;
+  }
+
+  const executable = tokens[index] || "";
+
+  return path.basename(executable);
+}
+
+function isInteractiveCommand(input) {
+  const executableName = getExecutableName(input);
+
+  return INTERACTIVE_COMMANDS.has(executableName);
+}
+
+function getInteractiveError(input) {
+  const executableName = getExecutableName(input) || "This command";
+
+  return `${executableName} is an interactive command and cannot run in this web terminal because standard input is not a TTY. Use non-interactive commands like cat, nl, sed, head, or tail instead.`;
 }
 
 async function resolveDirectory(currentCwd, target) {
@@ -105,7 +196,9 @@ export async function GET(request) {
     allowedCommands: getAllowedCommands(),
     cwd: getSessionCwd(session.username),
     shellEnabled: isShellTerminalEnabled(),
-    shellPath: process.env.TERMINAL_SHELL || (process.platform === "win32" ? "cmd.exe" : "/bin/bash"),
+    shellPath:
+      process.env.TERMINAL_SHELL ||
+      (process.platform === "win32" ? "cmd.exe" : "/bin/bash"),
   });
 }
 
@@ -139,8 +232,8 @@ export async function POST(request) {
     const maxBuffer = Number(process.env.TERMINAL_MAX_BUFFER || 1024 * 1024);
     const shellEnabled = isShellTerminalEnabled();
     const currentCwd = getSessionCwd(session.username);
-    let stdout;
-    let stderr;
+    let stdout = "";
+    let stderr = "";
     let auditCommand = input;
 
     if (input === "pwd") {
@@ -169,6 +262,7 @@ export async function POST(request) {
       const nextCwd = await resolveDirectory(currentCwd, target);
 
       setSessionCwd(session.username, nextCwd);
+
       await writeAuditLog({
         action: "terminal.cd",
         cwd: nextCwd,
@@ -184,12 +278,41 @@ export async function POST(request) {
       });
     }
 
+    if (isInteractiveCommand(input)) {
+      const errorMessage = getInteractiveError(input);
+
+      await writeAuditLog({
+        action: "terminal.command.blocked",
+        command: input,
+        error: errorMessage,
+        mode: shellEnabled ? "shell" : "controlled",
+        user: session.username,
+      });
+
+      return NextResponse.json(
+        {
+          command: input,
+          cwd: currentCwd,
+          error: errorMessage,
+          output: errorMessage,
+        },
+        { status: 400 }
+      );
+    }
+
     if (shellEnabled) {
       const result = await execAsync(input, {
         cwd: currentCwd,
         maxBuffer,
-        shell: process.env.TERMINAL_SHELL || (process.platform === "win32" ? "cmd.exe" : "/bin/bash"),
+        shell:
+          process.env.TERMINAL_SHELL ||
+          (process.platform === "win32" ? "cmd.exe" : "/bin/bash"),
         timeout,
+        env: {
+          ...process.env,
+          TERM: "dumb",
+          NO_COLOR: "1",
+        },
       });
 
       stdout = result.stdout;
@@ -198,7 +321,7 @@ export async function POST(request) {
       if (hasShellOperators(input)) {
         return NextResponse.json(
           { error: "Shell operators are not allowed in controlled terminal mode." },
-          { status: 400 },
+          { status: 400 }
         );
       }
 
@@ -211,22 +334,42 @@ export async function POST(request) {
             allowedCommands,
             error: `Command "${command}" is not allowed.`,
           },
-          { status: 403 },
+          { status: 403 }
+        );
+      }
+
+      if (INTERACTIVE_COMMANDS.has(command)) {
+        const errorMessage = getInteractiveError(command);
+
+        return NextResponse.json(
+          {
+            command: input,
+            cwd: currentCwd,
+            error: errorMessage,
+            output: errorMessage,
+          },
+          { status: 400 }
         );
       }
 
       auditCommand = command;
+
       const result = await execFileAsync(command, args, {
         cwd: currentCwd,
         maxBuffer,
         timeout,
+        env: {
+          ...process.env,
+          TERM: "dumb",
+          NO_COLOR: "1",
+        },
       });
 
       stdout = result.stdout;
       stderr = result.stderr;
     }
 
-    const output = [stdout, stderr].filter(Boolean).join("\n").trim();
+    const output = stripAnsi([stdout, stderr].filter(Boolean).join("\n").trim());
 
     await writeAuditLog({
       action: "terminal.command",
@@ -243,6 +386,8 @@ export async function POST(request) {
       output,
     });
   } catch (error) {
+    const output = stripAnsi([error.stdout, error.stderr].filter(Boolean).join("\n").trim());
+
     await writeAuditLog({
       action: "terminal.command.failed",
       command: input,
@@ -255,10 +400,10 @@ export async function POST(request) {
       {
         command: input,
         cwd: getSessionCwd(session.username),
-        error: error.message,
-        output: [error.stdout, error.stderr].filter(Boolean).join("\n").trim(),
+        error: stripAnsi(error.message),
+        output,
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

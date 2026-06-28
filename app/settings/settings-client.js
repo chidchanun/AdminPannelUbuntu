@@ -194,6 +194,10 @@ export default function SettingsClient({ username }) {
         restartableServices: payload.service.restartableServices || [],
       });
       setAlerts({
+        discordBotEnabled: Boolean(payload.alerts?.discordBotEnabled),
+        discordBotToken: payload.alerts?.discordBotToken || "",
+        discordChannelId: payload.alerts?.discordChannelId || "",
+        discordUserIds: listToText(payload.alerts?.discordUserIds),
         enabled: Boolean(payload.alerts?.enabled),
         minSeverity: payload.alerts?.minSeverity || "critical",
         webhookUrls: listToText(payload.alerts?.webhookUrls),
@@ -326,6 +330,10 @@ export default function SettingsClient({ username }) {
       });
       if (payload.alerts) {
         setAlerts({
+          discordBotEnabled: Boolean(payload.alerts.discordBotEnabled),
+          discordBotToken: payload.alerts.discordBotToken || "",
+          discordChannelId: payload.alerts.discordChannelId || "",
+          discordUserIds: listToText(payload.alerts.discordUserIds),
           enabled: Boolean(payload.alerts.enabled),
           minSeverity: payload.alerts.minSeverity || "critical",
           webhookUrls: listToText(payload.alerts.webhookUrls),
@@ -469,6 +477,10 @@ export default function SettingsClient({ username }) {
         },
         body: JSON.stringify({
           minSeverity: alerts.minSeverity,
+          discordBotEnabled: alerts.discordBotEnabled,
+          discordBotToken: alerts.discordBotToken,
+          discordChannelId: alerts.discordChannelId,
+          discordUserIds: textToList(alerts.discordUserIds),
           webhookUrls: textToList(alerts.webhookUrls),
         }),
       });
@@ -829,6 +841,62 @@ export default function SettingsClient({ username }) {
                         onChange={(value) => setAlerts({ ...alerts, webhookUrls: value })}
                         value={alerts.webhookUrls}
                       />
+                    </div>
+                    <div className="mt-5 rounded-md border border-white/10 bg-black/18 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <h3 className="font-bold">Discord Bot</h3>
+                          <p className="mt-2 text-sm leading-6 text-white/56">
+                            Send alerts with a Discord bot token to a specific channel.
+                          </p>
+                        </div>
+                        <ToggleButton
+                          checked={alerts.discordBotEnabled}
+                          label="Discord Bot"
+                          onToggle={() =>
+                            setAlerts({
+                              ...alerts,
+                              discordBotEnabled: !alerts.discordBotEnabled,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                        <label className="grid gap-2">
+                          <span className="text-sm font-bold text-white/72">Bot Token</span>
+                          <input
+                            className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                            onChange={(event) =>
+                              setAlerts({ ...alerts, discordBotToken: event.target.value })
+                            }
+                            placeholder="Bot token"
+                            type="password"
+                            value={alerts.discordBotToken}
+                          />
+                        </label>
+                        <label className="grid gap-2">
+                          <span className="text-sm font-bold text-white/72">Channel ID</span>
+                          <input
+                            className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                            onChange={(event) =>
+                              setAlerts({ ...alerts, discordChannelId: event.target.value })
+                            }
+                            placeholder="Discord channel ID"
+                            value={alerts.discordChannelId}
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-4">
+                        <ListField
+                          label="DM User IDs"
+                          onChange={(value) => setAlerts({ ...alerts, discordUserIds: value })}
+                          value={alerts.discordUserIds}
+                        />
+                        <p className="mt-2 text-xs leading-5 text-white/45">
+                          Put one Discord user ID per line. The bot must share a server with the
+                          user, and the user must allow DMs from that server.
+                        </p>
+                      </div>
                     </div>
                     <div className="mt-4 flex justify-end">
                       <button

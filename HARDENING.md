@@ -13,6 +13,9 @@ The payload includes:
 
 Discord-compatible webhooks can usually accept this directly. LINE or Telegram usually need a small relay endpoint.
 
+For Discord bot delivery, add the bot token and either a channel ID or DM user IDs in Settings.
+DM delivery requires the bot and user to share a server, and the user must allow DMs from that server.
+
 ## Two-Factor Authentication
 
 Enable TOTP 2FA from Settings for each admin user.

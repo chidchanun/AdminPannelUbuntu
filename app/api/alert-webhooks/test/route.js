@@ -28,13 +28,30 @@ export async function POST(request) {
 
   const current = await getAlertSettings();
   const settings = {
+    discordBotEnabled:
+      typeof body.discordBotEnabled === "boolean"
+        ? body.discordBotEnabled
+        : current.discordBotEnabled,
+    discordBotToken: body.discordBotToken || current.discordBotToken,
+    discordChannelId: body.discordChannelId || current.discordChannelId,
+    discordUserIds: Array.isArray(body.discordUserIds)
+      ? body.discordUserIds
+      : current.discordUserIds,
     enabled: true,
     minSeverity: body.minSeverity || current.minSeverity,
     webhookUrls: Array.isArray(body.webhookUrls) ? body.webhookUrls : current.webhookUrls,
   };
 
-  if (settings.webhookUrls.length === 0) {
-    return NextResponse.json({ error: "Webhook URL is required." }, { status: 400 });
+  if (
+    settings.webhookUrls.length === 0 &&
+    (!settings.discordBotEnabled ||
+      !settings.discordBotToken ||
+      (!settings.discordChannelId && settings.discordUserIds.length === 0))
+  ) {
+    return NextResponse.json(
+      { error: "Webhook URL or Discord bot settings are required." },
+      { status: 400 },
+    );
   }
 
   const results = await sendAlertWebhooks(

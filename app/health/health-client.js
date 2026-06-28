@@ -148,6 +148,41 @@ export default function HealthClient({ username }) {
     }
   }
 
+  async function restartPm2(target) {
+    if (!window.confirm(`Restart PM2 process ${target.pm2Name}?`)) {
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const response = await fetch("/api/pm2", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "restart",
+          name: target.pm2Name,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `PM2 API returned ${response.status}`);
+      }
+
+      setMessage(`${target.pm2Name} restart completed.`);
+      setError(null);
+      await loadHealth();
+    } catch (restartError) {
+      setError(restartError.message);
+      setMessage(null);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   useEffect(() => {
     const timeout = setTimeout(loadHealth, 0);
     const interval = setInterval(loadHealth, 15000);
@@ -315,13 +350,23 @@ export default function HealthClient({ username }) {
                           {item.latencyMs}ms
                         </span>
                         {item.logType === "pm2" && item.pm2Name ? (
-                          <button
-                            className="h-8 rounded-md border border-emerald-400/25 px-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/10"
-                            onClick={() => viewLogs(item)}
-                            type="button"
-                          >
-                            View Logs
-                          </button>
+                          <>
+                            <button
+                              className="h-8 rounded-md border border-emerald-400/25 px-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/10"
+                              onClick={() => viewLogs(item)}
+                              type="button"
+                            >
+                              View Logs
+                            </button>
+                            <button
+                              className="h-8 rounded-md bg-[#e95420] px-3 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
+                              disabled={isSaving}
+                              onClick={() => restartPm2(item)}
+                              type="button"
+                            >
+                              Restart PM2
+                            </button>
+                          </>
                         ) : null}
                         {item.source === "settings" ? (
                           <button

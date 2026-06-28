@@ -130,6 +130,8 @@ PM2 process name: erp-web
 
 The Health page will show a `View Logs` button that reads recent output with `pm2 logs <name> --lines 200 --nostream`. Set `PM2_PATH` or `PM2_LOG_LINES` if your server needs different values.
 
+PM2 processes also appear in `/pm2`, where admins can view CPU/RAM, uptime, restart counts, and run start/stop/restart/reload. Health targets with a PM2 process name also show `Restart PM2`.
+
 ## Development
 
 ```bash

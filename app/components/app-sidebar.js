@@ -6,6 +6,7 @@ const navigationItems = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Notifications", href: "/notifications" },
   { label: "Health", href: "/health" },
+  { label: "PM2", href: "/pm2" },
   { label: "Connections", href: "/connections" },
   { label: "Users", href: "/users" },
   { label: "Files", href: "/files" },

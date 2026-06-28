@@ -132,6 +132,15 @@ The Health page will show a `View Logs` button that reads recent output with `pm
 
 PM2 processes also appear in `/pm2`, where admins can view CPU/RAM, uptime, restart counts, and run start/stop/restart/reload. Health targets with a PM2 process name also show `Restart PM2`.
 
+Health results are recorded to `logs/health-history.json` and shown on `/health`. Alert thresholds can be adjusted with:
+
+```bash
+HEALTH_ALERT_FAILURE_STREAK=3
+HEALTH_ALERT_LATENCY_MS=2000
+HEALTH_HISTORY_MAX_AGE_HOURS=48
+HEALTH_HISTORY_MAX_ENTRIES=2500
+```
+
 ## Development
 
 ```bash

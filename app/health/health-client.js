@@ -7,6 +7,28 @@ function formatTime(value) {
   return value ? new Date(value).toLocaleString() : "-";
 }
 
+function formatShortTime(value) {
+  return value ? new Date(value).toLocaleTimeString() : "-";
+}
+
+function HistoryDots({ entries }) {
+  return (
+    <div className="flex min-w-0 flex-wrap gap-1.5">
+      {(entries || []).map((entry, index) => (
+        <span
+          className={`h-3 w-3 rounded-sm ${
+            entry.ok ? "bg-emerald-400/80" : "bg-[#e95420]"
+          }`}
+          key={`${entry.checkedAt}-${index}`}
+          title={`${formatTime(entry.checkedAt)} | ${
+            entry.ok ? "healthy" : entry.error || "unhealthy"
+          } | ${entry.latencyMs ?? "-"}ms`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function HealthClient({ username }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -262,6 +284,64 @@ export default function HealthClient({ username }) {
                 </article>
               </section>
 
+              {(data?.alerts || []).length > 0 ? (
+                <section className="rounded-lg border border-[#e95420]/45 bg-[#e95420]/14 p-5">
+                  <h2 className="text-xl font-bold tracking-normal">Active Health Alerts</h2>
+                  <div className="mt-4 grid gap-3">
+                    {data.alerts.map((alert, index) => (
+                      <div
+                        className="rounded-md border border-white/10 bg-black/20 px-4 py-3"
+                        key={`${alert.targetId}-${alert.title}-${index}`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-bold text-white">{alert.title}</p>
+                            <p className="mt-1 text-sm leading-6 text-white/68">{alert.detail}</p>
+                          </div>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] ${
+                              alert.severity === "critical"
+                                ? "bg-[#e95420]/22 text-[#ffb088]"
+                                : "bg-[#ffb088]/16 text-[#ffd4bf]"
+                            }`}
+                          >
+                            {alert.severity}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              <section className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                <h2 className="text-xl font-bold tracking-normal">Alert Rules</h2>
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  <div className="rounded-md bg-black/20 p-4">
+                    <p className="text-sm text-white/54">Failure streak</p>
+                    <p className="mt-1 text-2xl font-bold">
+                      {data?.rules?.failureStreakLimit ?? "-"}
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-black/20 p-4">
+                    <p className="text-sm text-white/54">Latency warning</p>
+                    <p className="mt-1 text-2xl font-bold">
+                      {data?.rules?.latencyWarningMs ?? "-"}ms
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-black/20 p-4">
+                    <p className="text-sm text-white/54">History window</p>
+                    <p className="mt-1 text-2xl font-bold">
+                      {data?.rules?.historyMaxAgeHours ?? "-"}h
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-black/20 p-4">
+                    <p className="text-sm text-white/54">Stored entries</p>
+                    <p className="mt-1 text-2xl font-bold">{data?.rules?.maxEntries ?? "-"}</p>
+                  </div>
+                </div>
+              </section>
+
               <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
                 <h2 className="text-xl font-bold tracking-normal">Add Website</h2>
                 <form className="mt-5 grid gap-3" onSubmit={addWebsite}>
@@ -385,6 +465,49 @@ export default function HealthClient({ username }) {
                   {!isLoading && (data?.results || []).length === 0 ? (
                     <p className="rounded-md border border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-white/58">
                       No health targets configured. Set HEALTH_CHECK_URLS or HEALTH_CHECK_PORTS.
+                    </p>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                <h2 className="text-xl font-bold tracking-normal">Health History</h2>
+                <div className="mt-5 grid gap-3">
+                  {(data?.history || []).map((item) => (
+                    <div
+                      className="grid gap-4 rounded-md border border-white/10 bg-white/[0.04] p-4 xl:grid-cols-[1fr_auto]"
+                      key={item.targetId}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <p className="break-all font-bold">
+                            {item.latest?.label || item.targetId}
+                          </p>
+                          <span
+                            className={`rounded-full px-3 py-1 text-sm font-bold ${
+                              item.latest?.ok
+                                ? "bg-emerald-400/12 text-emerald-200"
+                                : "bg-[#e95420]/18 text-[#ffb088]"
+                            }`}
+                          >
+                            {item.latest?.ok ? "Latest healthy" : "Latest unhealthy"}
+                          </span>
+                        </div>
+                        <div className="mt-3">
+                          <HistoryDots entries={item.recent} />
+                        </div>
+                      </div>
+                      <div className="grid gap-1 text-sm text-white/58 xl:text-right">
+                        <span>Uptime {item.uptimePercent ?? "-"}%</span>
+                        <span>Avg {item.averageLatencyMs ?? "-"}ms</span>
+                        <span>Failures {item.failures}</span>
+                        <span>Latest {formatShortTime(item.latest?.checkedAt)}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {(data?.history || []).length === 0 ? (
+                    <p className="rounded-md border border-white/10 bg-black/20 px-4 py-6 text-center text-sm text-white/58">
+                      No health history yet. It will appear after checks run.
                     </p>
                   ) : null}
                 </div>

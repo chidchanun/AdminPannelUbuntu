@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionFromRequest } from "@/lib/access-control";
 import { readAuditLog } from "@/lib/audit-log";
 import { runHealthChecks } from "@/lib/health-checks";
+import { buildHealthAlerts, readHealthHistory } from "@/lib/health-history";
 import { getThreatSnapshot } from "@/lib/threat-guard";
 
 export const runtime = "nodejs";
@@ -52,13 +53,15 @@ function buildSecurityNotifications(snapshot) {
 }
 
 function buildHealthNotifications(health) {
-  return health.unhealthy.map((item) => ({
+  const unhealthy = health.unhealthy.map((item) => ({
     at: health.checkedAt,
     detail: item.error || item.statusText || item.status || "",
     severity: "critical",
     source: "health",
     title: `${item.label} is unhealthy`,
   }));
+
+  return unhealthy;
 }
 
 export async function GET(request) {
@@ -68,12 +71,17 @@ export async function GET(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [audit, health] = await Promise.all([
+  const [audit, health, healthHistory] = await Promise.all([
     readAuditLog({ limit: 300 }),
     runHealthChecks(),
+    readHealthHistory(),
   ]);
   const security = getThreatSnapshot();
   const notifications = [
+    ...buildHealthAlerts({ history: healthHistory, snapshot: health }).map((alert) => ({
+      ...alert,
+      source: "health",
+    })),
     ...buildHealthNotifications(health),
     ...buildSecurityNotifications(security),
     ...buildAuditNotifications(audit),

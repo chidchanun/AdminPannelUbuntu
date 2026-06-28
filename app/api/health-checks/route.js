@@ -3,6 +3,12 @@ import { getSessionFromRequest, isAdminUser } from "@/lib/access-control";
 import { addHealthTarget, removeHealthTarget } from "@/lib/admin-settings";
 import { writeAuditLog } from "@/lib/audit-log";
 import { runHealthChecks } from "@/lib/health-checks";
+import {
+  buildHealthAlerts,
+  getHealthAlertRules,
+  groupHealthHistory,
+  recordHealthSnapshot,
+} from "@/lib/health-history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +20,15 @@ export async function GET(request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return NextResponse.json(await runHealthChecks());
+  const snapshot = await runHealthChecks();
+  const history = await recordHealthSnapshot(snapshot);
+
+  return NextResponse.json({
+    ...snapshot,
+    alerts: buildHealthAlerts({ history, snapshot }),
+    history: groupHealthHistory(history),
+    rules: getHealthAlertRules(),
+  });
 }
 
 export async function POST(request) {

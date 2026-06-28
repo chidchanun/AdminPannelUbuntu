@@ -14,6 +14,8 @@ Next.js admin panel for managing an Ubuntu server from a browser. It uses the sa
 - Security tuning for path scan, rate limit, port spread, and SSH failure thresholds
 - Audit log for admin actions
 - Settings page for service allowlists, security toggles, whitelist, alert webhooks, and JSON backup/restore
+- TOTP two-factor authentication after Ubuntu password login
+- Audit retention controls by age and entry count
 - Users page for `/etc/passwd`, active shell sessions, and recent failed SSH logins
 - Notification center for audit, security, and health notices
 - HTTP/TCP health checks for local apps and server ports
@@ -159,6 +161,13 @@ can be supported through a small relay.
 Security thresholds can also be tuned from Settings. Environment variables remain the defaults for
 fresh installs, while saved Settings values override them at runtime.
 
+Two-factor authentication can be enabled per signed-in user from Settings. Add the generated manual
+secret or otpauth URI to an authenticator app, verify the 6-digit code, then future logins for that
+user require both the Ubuntu password and TOTP code.
+
+Audit retention can be tuned from Settings. Defaults are 30 days or 10,000 entries unless overridden
+with `AUDIT_RETENTION_DAYS` or `AUDIT_RETENTION_MAX_ENTRIES`.
+
 ## Development
 
 ```bash
@@ -188,6 +197,7 @@ npm run start
 Run behind HTTPS and a reverse proxy. Forward `Host` and `X-Forwarded-Proto` so redirects and secure cookies use the public URL.
 
 For a full Ubuntu deployment walkthrough with PAM, systemd, nginx, HTTPS, PM2, sudoers, and backup notes, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+For production hardening notes covering webhook tests, 2FA, audit retention, and recommendations, see [HARDENING.md](./HARDENING.md).
 
 ## Security Notes
 

@@ -3,6 +3,7 @@ const loginErrors = {
   invalid: "Username or password is incorrect.",
   platform: "Ubuntu user login works when this app runs on Ubuntu/Linux Server.",
   pam: "PAM authentication is not configured on this server.",
+  totp: "Two-factor code is incorrect or missing.",
 };
 
 export default async function Home({ searchParams }) {
@@ -62,6 +63,20 @@ export default async function Home({ searchParams }) {
           placeholder="password"
           autoComplete="current-password"
           className="mt-2 h-12 w-full rounded-md border border-[#d7d3d7] bg-white px-4 text-base text-[#1f1f1f] outline-none transition focus:border-[#e95420] focus:ring-4 focus:ring-[#e95420]/15"
+        />
+
+        <label className="mt-5 block text-sm font-semibold text-[#3d3d3d]" htmlFor="totp">
+          2FA code
+        </label>
+        <input
+          autoComplete="one-time-code"
+          className="mt-2 h-12 w-full rounded-md border border-[#d7d3d7] bg-white px-4 text-base text-[#1f1f1f] outline-none transition focus:border-[#e95420] focus:ring-4 focus:ring-[#e95420]/15"
+          id="totp"
+          inputMode="numeric"
+          name="totp"
+          pattern="[0-9]*"
+          placeholder="optional unless enabled"
+          type="text"
         />
 
         <button

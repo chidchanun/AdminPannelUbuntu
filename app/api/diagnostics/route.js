@@ -85,6 +85,97 @@ function checkEnv(name, value, hint) {
   return check(name, "warn", "Not configured", hint);
 }
 
+function buildRecommendation({ detail, severity = "warning", title }) {
+  return { detail, severity, title };
+}
+
+async function buildSecurityRecommendations(checks, request) {
+  const recommendations = [];
+  const checkMap = new Map(checks.map((item) => [item.name, item]));
+  const proto = request.headers.get("x-forwarded-proto") || new URL(request.url).protocol.replace(":", "");
+
+  if (checkMap.get("LOGIN_ALLOWED_USERS")?.status !== "ok") {
+    recommendations.push(
+      buildRecommendation({
+        detail: "Set LOGIN_ALLOWED_USERS to the exact Ubuntu users allowed to sign in.",
+        severity: "critical",
+        title: "Limit login users",
+      }),
+    );
+  }
+
+  if (checkMap.get("ADMIN_USERS")?.status !== "ok") {
+    recommendations.push(
+      buildRecommendation({
+        detail: "Set ADMIN_USERS so administrative pages are not granted by fallback policy.",
+        severity: "critical",
+        title: "Set explicit admin users",
+      }),
+    );
+  }
+
+  if (proto !== "https" && process.env.AUTH_COOKIE_SECURE !== "true") {
+    recommendations.push(
+      buildRecommendation({
+        detail: "Serve the panel through HTTPS and set AUTH_COOKIE_SECURE=true in production.",
+        severity: "critical",
+        title: "Use secure cookies over HTTPS",
+      }),
+    );
+  }
+
+  if (checkMap.get("sudo non-interactive")?.status !== "ok") {
+    recommendations.push(
+      buildRecommendation({
+        detail: "Add narrow NOPASSWD sudoers rules only for the service/UFW commands this panel needs.",
+        title: "Configure least-privilege sudoers",
+      }),
+    );
+  }
+
+  if (checkMap.get("Localhost whitelist")?.status !== "ok") {
+    recommendations.push(
+      buildRecommendation({
+        detail: "Add ::1 and 127.0.0.1 to Security Whitelist or disable private IP auto-block.",
+        title: "Whitelist trusted localhost traffic",
+      }),
+    );
+  }
+
+  try {
+    const { getAlertSettings, getTwoFactorSettings } = await import("@/lib/admin-settings");
+    const [alerts, twoFactor] = await Promise.all([getAlertSettings(), getTwoFactorSettings()]);
+
+    if (!alerts.enabled || alerts.webhookUrls.length === 0) {
+      recommendations.push(
+        buildRecommendation({
+          detail: "Enable alert webhooks so critical health/security events reach you outside the panel.",
+          title: "Enable alert webhooks",
+        }),
+      );
+    }
+
+    if (!twoFactor.enabled) {
+      recommendations.push(
+        buildRecommendation({
+          detail: "Enable TOTP 2FA for admin users before exposing this panel beyond a trusted network.",
+          severity: "critical",
+          title: "Enable two-factor authentication",
+        }),
+      );
+    }
+  } catch (error) {
+    recommendations.push(
+      buildRecommendation({
+        detail: error.message,
+        title: "Unable to inspect saved hardening settings",
+      }),
+    );
+  }
+
+  return recommendations;
+}
+
 async function checkPam() {
   if (process.platform !== "linux") {
     return check("PAM native module", "warn", "Skipped on non-Linux development machine.");
@@ -211,6 +302,7 @@ export async function GET(request) {
   return NextResponse.json({
     checks,
     generatedAt: new Date().toISOString(),
+    recommendations: await buildSecurityRecommendations(checks, request),
     summary,
   });
 }

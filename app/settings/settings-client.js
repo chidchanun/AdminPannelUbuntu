@@ -156,11 +156,20 @@ export default function SettingsClient({ username }) {
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState(null);
   const [alerts, setAlerts] = useState(null);
+  const [auditRetention, setAuditRetention] = useState(null);
   const [security, setSecurity] = useState(null);
   const [securityTuning, setSecurityTuning] = useState(null);
   const [service, setService] = useState(null);
   const [roles, setRoles] = useState(null);
   const [restorePreview, setRestorePreview] = useState(null);
+  const [twoFactor, setTwoFactor] = useState(null);
+  const [twoFactorSetup, setTwoFactorSetup] = useState({
+    code: "",
+    secret: "",
+    uri: "",
+  });
+  const [isTwoFactorBusy, setIsTwoFactorBusy] = useState(false);
+  const [isWebhookTesting, setIsWebhookTesting] = useState(false);
   const [isSystemBackupBusy, setIsSystemBackupBusy] = useState(false);
   const [systemBackup, setSystemBackup] = useState({
     includeAudit: false,
@@ -189,6 +198,10 @@ export default function SettingsClient({ username }) {
         minSeverity: payload.alerts?.minSeverity || "critical",
         webhookUrls: listToText(payload.alerts?.webhookUrls),
       });
+      setAuditRetention({
+        maxAgeDays: payload.auditRetention?.maxAgeDays || 30,
+        maxEntries: payload.auditRetention?.maxEntries || 10000,
+      });
       setAvailableServices(payload.availableServices || []);
       setSecurity({
         autoAppBlock: Boolean(payload.security.autoAppBlock),
@@ -198,13 +211,17 @@ export default function SettingsClient({ username }) {
       });
       setSecurityTuning(payload.securityTuning || {});
       setRoles(payload.roles || {});
+      setTwoFactor({
+        enabled: Boolean(payload.twoFactor?.enabled),
+        userEnabled: Boolean(payload.twoFactor?.users?.[username]?.enabled),
+      });
       setError(null);
     } catch (loadError) {
       setError(loadError.message);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [username]);
 
   useEffect(() => {
     const timeout = setTimeout(loadSettings, 0);
@@ -230,6 +247,7 @@ export default function SettingsClient({ username }) {
             ...alerts,
             webhookUrls: textToList(alerts.webhookUrls),
           },
+          auditRetention,
           securityTuning,
           service: {
             controllableServices: service.controllableServices,
@@ -264,6 +282,7 @@ export default function SettingsClient({ username }) {
         ...alerts,
         webhookUrls: textToList(alerts.webhookUrls),
       },
+      auditRetention,
       securityTuning,
       service,
       version: 1,
@@ -314,6 +333,9 @@ export default function SettingsClient({ username }) {
       }
       if (payload.securityTuning) {
         setSecurityTuning(payload.securityTuning);
+      }
+      if (payload.auditRetention) {
+        setAuditRetention(payload.auditRetention);
       }
       setMessage("Backup imported. Review then save settings to apply.");
       setError(null);
@@ -436,6 +458,133 @@ export default function SettingsClient({ username }) {
     }
   }
 
+  async function testWebhook() {
+    setIsWebhookTesting(true);
+
+    try {
+      const response = await fetch("/api/alert-webhooks/test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          minSeverity: alerts.minSeverity,
+          webhookUrls: textToList(alerts.webhookUrls),
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Webhook test returned ${response.status}`);
+      }
+
+      setMessage(
+        payload.ok
+          ? "Webhook test sent."
+          : "Webhook test completed, but no endpoint returned success.",
+      );
+      setError(null);
+    } catch (webhookError) {
+      setError(webhookError.message);
+      setMessage(null);
+    } finally {
+      setIsWebhookTesting(false);
+    }
+  }
+
+  async function generateTwoFactor() {
+    setIsTwoFactorBusy(true);
+
+    try {
+      const response = await fetch("/api/2fa", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "generate" }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `2FA API returned ${response.status}`);
+      }
+
+      setTwoFactorSetup({
+        code: "",
+        secret: payload.secret,
+        uri: payload.uri,
+      });
+      setMessage("2FA secret generated. Add it to your authenticator app, then verify.");
+      setError(null);
+    } catch (twoFactorError) {
+      setError(twoFactorError.message);
+      setMessage(null);
+    } finally {
+      setIsTwoFactorBusy(false);
+    }
+  }
+
+  async function enableTwoFactor() {
+    setIsTwoFactorBusy(true);
+
+    try {
+      const response = await fetch("/api/2fa", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "enable",
+          code: twoFactorSetup.code,
+          secret: twoFactorSetup.secret,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `2FA API returned ${response.status}`);
+      }
+
+      setTwoFactor({ enabled: true, userEnabled: true });
+      setTwoFactorSetup({ code: "", secret: "", uri: "" });
+      setMessage("2FA enabled for your account.");
+      setError(null);
+    } catch (twoFactorError) {
+      setError(twoFactorError.message);
+      setMessage(null);
+    } finally {
+      setIsTwoFactorBusy(false);
+    }
+  }
+
+  async function disableTwoFactor() {
+    setIsTwoFactorBusy(true);
+
+    try {
+      const response = await fetch("/api/2fa", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "disable" }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `2FA API returned ${response.status}`);
+      }
+
+      setTwoFactor({ enabled: false, userEnabled: false });
+      setMessage("2FA disabled for your account.");
+      setError(null);
+    } catch (twoFactorError) {
+      setError(twoFactorError.message);
+      setMessage(null);
+    } finally {
+      setIsTwoFactorBusy(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#1c1b22] text-white">
       <AppMobileNav activeItem="Settings" />
@@ -491,7 +640,13 @@ export default function SettingsClient({ username }) {
                 </section>
               ) : null}
 
-              {isLoading || !service || !security || !alerts || !securityTuning ? (
+              {isLoading ||
+              !service ||
+              !security ||
+              !alerts ||
+              !auditRetention ||
+              !securityTuning ||
+              !twoFactor ? (
                 <p className="rounded-md bg-black/20 px-4 py-5 text-sm text-white/58">
                   Loading settings...
                 </p>
@@ -674,6 +829,127 @@ export default function SettingsClient({ username }) {
                         onChange={(value) => setAlerts({ ...alerts, webhookUrls: value })}
                         value={alerts.webhookUrls}
                       />
+                    </div>
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isWebhookTesting}
+                        onClick={testWebhook}
+                        type="button"
+                      >
+                        {isWebhookTesting ? "Testing" : "Test Webhook"}
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                    <h2 className="text-xl font-bold tracking-normal">Audit Retention</h2>
+                    <p className="mt-2 text-sm leading-6 text-white/56">
+                      Keep audit logs bounded by age and entry count.
+                    </p>
+                    <div className="mt-5 grid gap-4 md:grid-cols-2">
+                      <NumberField
+                        label="Max Age Days"
+                        onChange={(value) =>
+                          setAuditRetention({ ...auditRetention, maxAgeDays: value })
+                        }
+                        value={auditRetention.maxAgeDays}
+                      />
+                      <NumberField
+                        label="Max Entries"
+                        min={100}
+                        onChange={(value) =>
+                          setAuditRetention({ ...auditRetention, maxEntries: value })
+                        }
+                        value={auditRetention.maxEntries}
+                      />
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-bold tracking-normal">
+                          Two-Factor Authentication
+                        </h2>
+                        <p className="mt-2 text-sm leading-6 text-white/56">
+                          Add a TOTP code after Ubuntu password login for this account.
+                        </p>
+                      </div>
+                      <span
+                        className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] ${
+                          twoFactor.userEnabled
+                            ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-100"
+                            : "border-[#ffb088]/28 bg-[#ffb088]/10 text-[#ffd1bd]"
+                        }`}
+                      >
+                        {twoFactor.userEnabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </div>
+
+                    <div className="mt-5 grid gap-4">
+                      {twoFactor.userEnabled ? (
+                        <div className="flex justify-end">
+                          <button
+                            className="h-10 rounded-md border border-[#e95420]/45 px-4 text-sm font-semibold text-[#ffb088] transition hover:bg-[#e95420]/14 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isTwoFactorBusy}
+                            onClick={disableTwoFactor}
+                            type="button"
+                          >
+                            Disable 2FA
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          {twoFactorSetup.secret ? (
+                            <div className="grid gap-4">
+                              <div className="rounded-md border border-white/10 bg-black/20 p-4">
+                                <p className="text-sm font-bold text-white/72">Manual Secret</p>
+                                <p className="mt-2 break-all font-mono text-sm text-white/82">
+                                  {twoFactorSetup.secret}
+                                </p>
+                                <p className="mt-4 text-sm font-bold text-white/72">otpauth URI</p>
+                                <p className="mt-2 break-all font-mono text-xs leading-6 text-white/56">
+                                  {twoFactorSetup.uri}
+                                </p>
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                                <input
+                                  className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                                  inputMode="numeric"
+                                  onChange={(event) =>
+                                    setTwoFactorSetup({
+                                      ...twoFactorSetup,
+                                      code: event.target.value,
+                                    })
+                                  }
+                                  placeholder="Enter 6-digit code"
+                                  value={twoFactorSetup.code}
+                                />
+                                <button
+                                  className="h-11 rounded-md bg-[#e95420] px-5 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
+                                  disabled={isTwoFactorBusy}
+                                  onClick={enableTwoFactor}
+                                  type="button"
+                                >
+                                  Verify And Enable
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex justify-end">
+                              <button
+                                className="h-10 rounded-md bg-[#e95420] px-4 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={isTwoFactorBusy}
+                                onClick={generateTwoFactor}
+                                type="button"
+                              >
+                                Generate 2FA Secret
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </section>
 

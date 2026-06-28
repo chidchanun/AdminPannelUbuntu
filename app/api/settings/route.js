@@ -81,27 +81,45 @@ export async function GET(request) {
   }
 
   const [
-    { getAlertSettings, getSecurityTuningSettings, getServiceSettings },
+    {
+      getAlertSettings,
+      getAuditRetentionSettings,
+      getSecurityTuningSettings,
+      getServiceSettings,
+      getTwoFactorSettings,
+    },
     { getSecuritySettings },
   ] = await Promise.all([
     getAdminSettingsStore(),
     import("@/lib/security-block-store"),
   ]);
-  const [alerts, availableServices, securityTuning, service, security] = await Promise.all([
+  const [alerts, auditRetention, availableServices, securityTuning, service, security, twoFactor] = await Promise.all([
     getAlertSettings(),
+    getAuditRetentionSettings(),
     listAvailableServices(),
     getSecurityTuningSettings(),
     getServiceSettings(),
     getSecuritySettings(),
+    getTwoFactorSettings(),
   ]);
 
   return NextResponse.json({
     alerts,
+    auditRetention,
     availableServices,
     roles: getRoleSettings(),
     security,
     securityTuning,
     service,
+    twoFactor: {
+      enabled: Boolean(twoFactor.enabled),
+      users: Object.fromEntries(
+        Object.entries(twoFactor.users).map(([username, config]) => [
+          username,
+          { enabled: Boolean(config.enabled) },
+        ]),
+      ),
+    },
     updatedAt: new Date().toISOString(),
   });
 }
@@ -141,6 +159,12 @@ export async function POST(request) {
 
     updates.securityTuning = await updateSecurityTuningSettings(body.securityTuning);
     setThreatConfig(updates.securityTuning);
+  }
+
+  if (body?.auditRetention) {
+    const { updateAuditRetentionSettings } = await getAdminSettingsStore();
+
+    updates.auditRetention = await updateAuditRetentionSettings(body.auditRetention);
   }
 
   if (body?.security) {

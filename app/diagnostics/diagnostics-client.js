@@ -49,6 +49,21 @@ function CheckCard({ item }) {
   );
 }
 
+function RecommendationCard({ item }) {
+  return (
+    <article
+      className={`rounded-lg border p-5 ${
+        item.severity === "critical"
+          ? "border-[#e95420]/45 bg-[#e95420]/14"
+          : "border-[#ffb088]/28 bg-[#ffb088]/10"
+      }`}
+    >
+      <h2 className="text-lg font-bold tracking-normal">{item.title}</h2>
+      <p className="mt-2 text-sm leading-6 text-white/62">{item.detail}</p>
+    </article>
+  );
+}
+
 export default function DiagnosticsClient({ username }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -161,6 +176,19 @@ export default function DiagnosticsClient({ username }) {
                       when local traffic is expected.
                     </p>
                   </section>
+
+                  {data.recommendations?.length > 0 ? (
+                    <section className="grid gap-3">
+                      <h2 className="text-xl font-bold tracking-normal">
+                        Security Recommendations
+                      </h2>
+                      <div className="grid gap-3 xl:grid-cols-2">
+                        {data.recommendations.map((item) => (
+                          <RecommendationCard item={item} key={item.title} />
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
 
                   {["fail", "warn", "ok"].map((status) =>
                     groupedChecks[status].length > 0 ? (

@@ -103,6 +103,7 @@ export async function POST(request) {
   const formData = await request.formData();
   const username = String(formData.get("username") || "").trim();
   const password = String(formData.get("password") || "");
+  const totpCode = String(formData.get("totp") || "");
 
   if (!username || !password) {
     await writeAuditLog({
@@ -134,6 +135,24 @@ export async function POST(request) {
     });
 
     return NextResponse.redirect(getPublicUrl(request, `/?error=${result.reason}`), 303);
+  }
+
+  const { getTwoFactorSettings } = await import("@/lib/admin-settings");
+  const twoFactor = await getTwoFactorSettings();
+  const userTwoFactor = twoFactor.users[username];
+
+  if (userTwoFactor?.enabled) {
+    const { verifyTotp } = await import("@/lib/totp");
+
+    if (!verifyTotp({ code: totpCode, secret: userTwoFactor.secret })) {
+      await writeAuditLog({
+        action: "login.failed",
+        reason: "totp",
+        username,
+      });
+
+      return NextResponse.redirect(getPublicUrl(request, "/?error=totp"), 303);
+    }
   }
 
   const response = NextResponse.redirect(getPublicUrl(request, "/dashboard"), 303);

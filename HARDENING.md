@@ -50,3 +50,22 @@ The Diagnostics page now shows hardening recommendations, including:
 - localhost not whitelisted while private IP auto-block is enabled
 - alert webhooks not enabled
 - 2FA not enabled
+
+## Package Installer
+
+The `/packages` page installs apt packages through a controlled API, not a full shell.
+
+Recommended production defaults:
+
+```bash
+PACKAGE_INSTALL_USERS=yourUbuntuUser
+PACKAGE_INSTALL_ALLOWLIST=htop,curl,git
+```
+
+The install action runs:
+
+```bash
+sudo -n apt-get install -y --no-install-recommends <package>
+```
+
+Add narrow sudoers rules for the Node process user. Use `PACKAGE_INSTALL_ALLOW_ANY=true` only when you accept that admins can install any valid apt package name.

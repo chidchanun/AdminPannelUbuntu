@@ -22,6 +22,7 @@ Next.js admin panel for managing an Ubuntu server from a browser. It uses the sa
 - PM2 process and log views for apps running on the same server
 - System backup/restore for admin settings, security blocks, and optional health history/audit export
 - Ubuntu Update Center for package update, security update, and reboot-required visibility
+- Controlled package installer for apt packages with allowlist support
 
 ## Requirements
 
@@ -167,6 +168,15 @@ user require both the Ubuntu password and TOTP code.
 
 Audit retention can be tuned from Settings. Defaults are 30 days or 10,000 entries unless overridden
 with `AUDIT_RETENTION_DAYS` or `AUDIT_RETENTION_MAX_ENTRIES`.
+
+Package installation is available from `/packages`. By default it requires a package allowlist:
+
+```bash
+PACKAGE_INSTALL_USERS=yourUbuntuUser
+PACKAGE_INSTALL_ALLOWLIST=htop,curl,git
+```
+
+Use `PACKAGE_INSTALL_ALLOW_ANY=true` only if you intentionally allow admins to install any valid apt package name.
 
 ## Development
 

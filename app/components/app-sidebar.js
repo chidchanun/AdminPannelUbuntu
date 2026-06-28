@@ -8,6 +8,7 @@ const navigationItems = [
   { label: "Health", href: "/health" },
   { label: "PM2", href: "/pm2" },
   { label: "Updates", href: "/updates" },
+  { label: "Packages", href: "/packages" },
   { label: "Connections", href: "/connections" },
   { label: "Users", href: "/users" },
   { label: "Files", href: "/files" },

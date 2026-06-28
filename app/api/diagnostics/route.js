@@ -56,12 +56,20 @@ async function commandExists(command) {
 
 async function checkWritablePath(label, filePath) {
   const directory = getDirectoryName(filePath);
-  const probePath = `${directory}/.ubuntu-admin-write-test`;
+  const safeLabel = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const probePath = `${directory}/.ubuntu-admin-write-test-${safeLabel}-${process.pid}`;
 
   try {
     await fs.mkdir(directory, { recursive: true });
     await fs.writeFile(probePath, new Date().toISOString(), "utf8");
-    await fs.unlink(probePath);
+
+    try {
+      await fs.unlink(probePath);
+    } catch (unlinkError) {
+      if (unlinkError.code !== "ENOENT") {
+        throw unlinkError;
+      }
+    }
 
     return check(label, "ok", filePath);
   } catch (error) {

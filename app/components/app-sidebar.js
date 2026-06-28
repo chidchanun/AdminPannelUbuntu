@@ -13,6 +13,7 @@ const navigationItems = [
   { label: "Editor", href: "/editor" },
   { label: "Services", href: "/services" },
   { label: "Security", href: "/security" },
+  { label: "Diagnostics", href: "/diagnostics" },
   { label: "Audit", href: "/audit" },
   { label: "Settings", href: "/settings" },
 ];

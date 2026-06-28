@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AppSidebar, { AppMobileNav } from "@/app/components/app-sidebar";
 
 export default function TerminalClient({ username }) {
@@ -12,6 +12,31 @@ export default function TerminalClient({ username }) {
   const [isRunning, setIsRunning] = useState(false);
   const [shellEnabled, setShellEnabled] = useState(false);
   const [shellPath, setShellPath] = useState("");
+
+  const terminalRef = useRef(null);
+
+  const formatLinuxPath = useCallback(
+    (path) => {
+      if (!path) return "~";
+
+      const safeUsername = username || "ubuntu";
+      const homePath = `/home/${safeUsername}`;
+
+      if (path === homePath) return "~";
+
+      if (path.startsWith(`${homePath}/`)) {
+        return path.replace(homePath, "~");
+      }
+
+      return path;
+    },
+    [username]
+  );
+
+  const getPrompt = useCallback(
+    (path) => `${username || "ubuntu"}@ubuntu:${formatLinuxPath(path)}$`,
+    [username, formatLinuxPath]
+  );
 
   const loadTerminal = useCallback(async () => {
     try {
@@ -38,12 +63,21 @@ export default function TerminalClient({ username }) {
     return () => clearTimeout(timeout);
   }, [loadTerminal]);
 
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [history, error, isRunning]);
+
   async function runCommand(event) {
     event.preventDefault();
 
     if (!command.trim()) {
       return;
     }
+
+    const currentCommand = command.trim();
+    const currentPrompt = getPrompt(cwd);
 
     setIsRunning(true);
 
@@ -53,8 +87,9 @@ export default function TerminalClient({ username }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ command }),
+        body: JSON.stringify({ command: currentCommand }),
       });
+
       const payload = await response.json();
       const nextCwd = payload.cwd || cwd;
 
@@ -71,11 +106,11 @@ export default function TerminalClient({ username }) {
           ...current,
           {
             at: new Date().toISOString(),
-            command,
+            command: currentCommand,
             error: response.ok ? "" : payload.error,
             output: payload.output || payload.error || "",
             ok: response.ok,
-            prompt: `${username}:${cwd || "~"}$`,
+            prompt: currentPrompt,
           },
         ].slice(-60)
       );
@@ -97,127 +132,134 @@ export default function TerminalClient({ username }) {
     }
   }
 
+  const quickCommands = shellEnabled
+    ? ["uptime", "df -h", "free -h", "systemctl status nginx"]
+    : allowedCommands;
+
   return (
-    <main className="min-h-screen bg-[#1c1b22] text-white">
+    <main className="min-h-screen bg-[#1e1e1e] text-white">
       <AppMobileNav activeItem="Terminal" />
+
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <AppSidebar
           activeItem="Terminal"
-          helperText="Runs admin terminal commands with audit logging."
+          helperText="Ubuntu terminal command runner with audit logging."
           username={username}
         />
 
-        <section className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_0%,rgba(233,84,32,0.20),transparent_30%),linear-gradient(135deg,rgba(44,0,30,0.58),rgba(17,17,17,0.98)_56%)]" />
-          <div className="relative z-10 px-5 py-5 sm:px-8 lg:px-10">
-            <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#ffb088]">
-                  Terminal
-                </p>
-                <h1 className="mt-2 text-3xl font-bold tracking-normal">Web Terminal</h1>
+        <section className="flex min-h-screen items-center justify-center bg-[#2c001e] p-4 sm:p-6 lg:p-8">
+          <div className="w-full max-w-6xl overflow-hidden rounded-lg border border-black/40 bg-[#300a24] shadow-2xl">
+            <div className="flex h-10 items-center justify-between bg-[#3d3d3d] px-3">
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
+                <span className="h-3 w-3 rounded-full bg-[#ffbd2e]" />
+                <span className="h-3 w-3 rounded-full bg-[#28c840]" />
               </div>
+
+              <div className="select-none text-sm font-semibold text-white/85">
+                {username || "ubuntu"}@ubuntu: {formatLinuxPath(cwd)}
+              </div>
+
               <form action="/api/logout" method="post">
                 <button
-                  className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                  className="rounded px-3 py-1 text-xs font-semibold text-white/70 transition hover:bg-white/10 hover:text-white"
                   type="submit"
                 >
                   Logout
                 </button>
               </form>
-            </header>
+            </div>
 
-            <div className="grid gap-5 py-7">
-              {error ? (
-                <section className="rounded-lg border border-[#e95420]/50 bg-[#e95420]/14 p-5">
-                  <h2 className="text-xl font-bold tracking-normal">Terminal error</h2>
-                  <p className="mt-2 text-sm leading-6 text-white/70">{error}</p>
-                </section>
+            <div
+              ref={terminalRef}
+              className="h-[calc(100vh-110px)] min-h-[560px] overflow-auto bg-[#300a24] p-4 font-mono text-sm leading-6 text-[#eeeeec]"
+            >
+              <p className="text-[#eeeeec]">
+                Welcome to Ubuntu Terminal
+              </p>
+
+              <p className="text-[#eeeeec]/70">
+                Current shell mode:{" "}
+                <span className="text-[#fce94f]">
+                  {shellEnabled
+                    ? `Full shell (${shellPath || "default"})`
+                    : "Controlled allowlist"}
+                </span>
+              </p>
+
+              {quickCommands.length > 0 ? (
+                <>
+                  <br />
+                  <p className="text-[#eeeeec]/70">Quick commands:</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {quickCommands.map((item) => (
+                      <button
+                        className="font-mono text-[#729fcf] underline-offset-2 hover:text-[#8cc4ff] hover:underline"
+                        key={item}
+                        onClick={() => setCommand(item)}
+                        type="button"
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : null}
 
-              <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
-                <p className="text-sm text-white/48">Working directory</p>
-                <p className="mt-2 break-all font-mono text-sm text-white/74">{cwd || "-"}</p>
-                <div className="mt-4 rounded-md border border-[#ffb088]/28 bg-[#ffb088]/10 px-4 py-3 text-sm leading-6 text-white/68">
-                  Mode:{" "}
-                  <span className="font-bold text-[#ffb088]">
-                    {shellEnabled ? `Full shell (${shellPath || "default"})` : "Controlled allowlist"}
-                  </span>
-                  {shellEnabled
-                    ? ". Commands are executed by the server shell and recorded in audit logs."
-                    : ". Only allowlisted commands can run."}
-                </div>
+              {error ? (
+                <>
+                  <br />
+                  <p className="text-[#ef2929]">terminal error: {error}</p>
+                </>
+              ) : null}
 
-                {shellEnabled ? (
-                  <div className="mt-4 grid gap-2 text-xs text-white/48 sm:grid-cols-2 xl:grid-cols-4">
-                    {["uptime", "df -h", "free -h", "systemctl status nginx"].map((item) => (
-                      <button
-                        className="rounded-md border border-white/10 bg-white/8 px-3 py-2 font-mono text-left text-white/68 transition hover:bg-white/12"
-                        key={item}
-                        onClick={() => setCommand(item)}
-                        type="button"
-                      >
-                        {item}
-                      </button>
-                    ))}
+              <br />
+
+              {history.length > 0 ? (
+                history.map((item) => (
+                  <div className="mb-3" key={`${item.at}-${item.command}`}>
+                    <p>
+                      <span className="font-bold text-[#8ae234]">
+                        {item.prompt}
+                      </span>{" "}
+                      <span className="text-[#eeeeec]">{item.command}</span>
+                    </p>
+
+                    <pre
+                      className={`mt-1 whitespace-pre-wrap font-mono ${
+                        item.ok ? "text-[#eeeeec]" : "text-[#ef2929]"
+                      }`}
+                    >
+                      {item.output || "(no output)"}
+                    </pre>
                   </div>
-                ) : (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {allowedCommands.map((item) => (
-                      <button
-                        className="rounded-md border border-white/10 bg-white/8 px-3 py-2 font-mono text-xs text-white/68 transition hover:bg-white/12"
-                        key={item}
-                        onClick={() => setCommand(item)}
-                        type="button"
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </section>
+                ))
+              ) : (
+                <p className="text-[#eeeeec]/60">
+                  Type a command and press Enter.
+                </p>
+              )}
 
-              <section className="rounded-lg border border-white/10 bg-black/50 p-4">
-                <div className="min-h-[52vh] overflow-auto rounded-md bg-black/45 p-4 font-mono text-sm leading-6 text-white/78">
-                  {history.length > 0 ? (
-                    history.map((item) => (
-                      <div className="mb-4" key={`${item.at}-${item.command}`}>
-                        <p className={item.ok ? "text-[#ffb088]" : "text-red-300"}>
-                          {item.prompt} {item.command}
-                        </p>
-                        <pre className="mt-1 whitespace-pre-wrap text-white/74">
-                          {item.output || "(no output)"}
-                        </pre>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-white/40">SSH-like web terminal ready.</p>
-                  )}
-                </div>
+              <form className="mt-2 flex items-center gap-2" onSubmit={runCommand}>
+                <span className="shrink-0 font-bold text-[#8ae234]">
+                  {getPrompt(cwd)}
+                </span>
 
-                <form
-                  className="mt-3 grid gap-3 lg:grid-cols-[auto_minmax(0,1fr)_auto]"
-                  onSubmit={runCommand}
-                >
-                  <span className="self-center break-all font-mono text-sm font-bold text-[#ffb088]">
-                    {username}:{cwd || "~"}$
+                <input
+                  autoFocus
+                  className="min-w-0 flex-1 border-none bg-transparent font-mono text-[#eeeeec] caret-white outline-none disabled:opacity-60"
+                  disabled={isRunning}
+                  onChange={(event) => setCommand(event.target.value)}
+                  spellCheck={false}
+                  value={command}
+                />
+
+                {isRunning ? (
+                  <span className="animate-pulse text-[#fce94f]">
+                    running...
                   </span>
-                  <input
-                    autoFocus
-                    className="h-12 rounded-md border border-white/10 bg-black/32 px-4 font-mono text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
-                    onChange={(event) => setCommand(event.target.value)}
-                    placeholder={shellEnabled ? "type a command like SSH" : "uptime"}
-                    value={command}
-                  />
-                  <button
-                    className="h-12 rounded-md bg-[#e95420] px-6 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isRunning}
-                    type="submit"
-                  >
-                    {isRunning ? "Running" : "Run"}
-                  </button>
-                </form>
-              </section>
+                ) : null}
+              </form>
             </div>
           </div>
         </section>

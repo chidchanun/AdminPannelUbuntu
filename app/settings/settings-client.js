@@ -194,6 +194,63 @@ export default function SettingsClient({ username }) {
     }
   }
 
+  function exportSettings() {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      security: {
+        ...security,
+        whitelistIps: textToList(security.whitelistIps),
+      },
+      service,
+      version: 1,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "ubuntu-admin-settings.json";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importSettings(event) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(await file.text());
+
+      if (!payload.service || !payload.security) {
+        throw new Error("Settings backup must include service and security sections.");
+      }
+
+      setService({
+        controllableServices: payload.service.controllableServices || [],
+        monitoredServices: payload.service.monitoredServices || [],
+        restartableServices: payload.service.restartableServices || [],
+      });
+      setSecurity({
+        autoAppBlock: Boolean(payload.security.autoAppBlock),
+        autoBlockPrivateIps: Boolean(payload.security.autoBlockPrivateIps),
+        autoFirewallBlock: Boolean(payload.security.autoFirewallBlock),
+        whitelistIps: listToText(payload.security.whitelistIps),
+      });
+      setMessage("Backup imported. Review then save settings to apply.");
+      setError(null);
+    } catch (importError) {
+      setError(importError.message);
+      setMessage(null);
+    } finally {
+      event.target.value = "";
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#1c1b22] text-white">
       <AppMobileNav activeItem="Settings" />
@@ -319,6 +376,35 @@ export default function SettingsClient({ username }) {
                         onChange={(value) => setSecurity({ ...security, whitelistIps: value })}
                         value={security.whitelistIps}
                       />
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-bold tracking-normal">Backup Settings</h2>
+                        <p className="mt-2 text-sm leading-6 text-white/56">
+                          Export or restore service allowlists and security guard settings.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10"
+                          onClick={exportSettings}
+                          type="button"
+                        >
+                          Export JSON
+                        </button>
+                        <label className="grid h-10 cursor-pointer place-items-center rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10">
+                          Import JSON
+                          <input
+                            accept="application/json,.json"
+                            className="sr-only"
+                            onChange={importSettings}
+                            type="file"
+                          />
+                        </label>
+                      </div>
                     </div>
                   </section>
 

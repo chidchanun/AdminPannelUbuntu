@@ -1,36 +1,132 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Ubuntu Admin Panel
 
-## Getting Started
+Next.js admin panel for managing an Ubuntu server from a browser. It uses the same Linux user/password through PAM, then shows server status, services, security events, files, editor, audit logs, settings, and system users.
 
-First, run the development server:
+## Features
+
+- PAM login with Ubuntu server users
+- Dashboard with CPU, RAM, disk, temperature, notices, and service health
+- Connections page for active IPs and connection activity
+- File browser with file/folder icons, create file, create folder, and web editor
+- Services page with filtering, detail logs, and start/stop/restart/enable/disable actions
+- Security guard for suspicious path scans, high-rate requests, manual blocks, whitelist, and optional UFW block
+- Audit log for admin actions
+- Settings page for service allowlists, security toggles, whitelist, and JSON backup/restore
+- Users page for `/etc/passwd`, active shell sessions, and recent failed SSH logins
+
+## Requirements
+
+- Ubuntu server for production use
+- Node.js supported by Next.js 16
+- `systemctl`, `ss`, `journalctl`, and `who` for full server monitoring
+- `authenticate-pam` installed on the Ubuntu server for PAM login
+- Optional: `ufw` and sudo permissions for firewall blocking
+
+## Setup
+
+```bash
+npm install
+npm install authenticate-pam
+cp .env.example .env.local
+npm run dev
+```
+
+If you do not have `.env.example`, create `.env.local` with the values you need:
+
+```bash
+AUTH_SECRET=change-this-long-random-secret
+LOGIN_ALLOWED_USERS=yourUbuntuUser
+ADMIN_USERS=yourUbuntuUser
+PAM_SERVICE=nextjs
+FILE_BROWSER_ROOT=/home
+AUTH_COOKIE_SECURE=false
+```
+
+Use `AUTH_COOKIE_SECURE=true` when serving through HTTPS.
+
+## PAM
+
+The app authenticates with Ubuntu through PAM. On the server, install the native package:
+
+```bash
+npm install authenticate-pam
+```
+
+Create `/etc/pam.d/nextjs` if you use the default `PAM_SERVICE=nextjs`:
+
+```text
+auth    include common-auth
+account include common-account
+```
+
+Only users listed in `LOGIN_ALLOWED_USERS` can log in.
+
+## Permissions
+
+Some actions require the Node process user to have Linux permissions:
+
+- Reading files depends on normal filesystem permissions.
+- Writing files requires the app user to own the target files or have write access.
+- Restarting services or UFW blocking usually needs sudo/polkit configuration.
+
+Example sudoers entries, adjust usernames and service names before using:
+
+```text
+ubuntu-admin ALL=(root) NOPASSWD: /bin/systemctl restart nginx.service, /bin/systemctl start nginx.service, /bin/systemctl stop nginx.service
+ubuntu-admin ALL=(root) NOPASSWD: /usr/sbin/ufw deny from *
+ubuntu-admin ALL=(root) NOPASSWD: /usr/sbin/ufw delete deny from *
+```
+
+## Settings
+
+Runtime settings are saved under `logs/` by default:
+
+- `logs/admin-settings.json`
+- `logs/security-blocks.json`
+- `logs/admin-audit.log`
+
+You can override these paths:
+
+```bash
+ADMIN_SETTINGS_PATH=/var/lib/ubuntu-admin/admin-settings.json
+SECURITY_BLOCK_STORE_PATH=/var/lib/ubuntu-admin/security-blocks.json
+AUDIT_LOG_PATH=/var/log/ubuntu-admin/audit.log
+```
+
+The Settings page can export/import a JSON backup of service allowlists and security settings.
+
+## Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+If you open the dev server through an IP/domain, add it to `next.config.mjs`:
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+```js
+const nextConfig = {
+  allowedDevOrigins: ["192.168.1.50", "chidchanun.online"],
+  serverExternalPackages: ["authenticate-pam"],
+};
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+export default nextConfig;
+```
 
-## Learn More
+## Production
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run build
+npm run start
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Run behind HTTPS and a reverse proxy. Forward `Host` and `X-Forwarded-Proto` so redirects and secure cookies use the public URL.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Security Notes
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Keep `AUTH_SECRET` private and long.
+- Keep `LOGIN_ALLOWED_USERS`, `ADMIN_USERS`, `FILE_WRITE_USERS`, `SERVICE_RESTART_USERS`, `SERVICE_CONTROL_USERS`, and `FIREWALL_USERS` narrow.
+- Use the whitelist before enabling aggressive auto-block rules.
+- Review audit logs after service, file, firewall, and settings changes.
+- Do not expose this panel publicly without HTTPS and firewall restrictions.

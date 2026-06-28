@@ -5,6 +5,7 @@ import Link from "next/link";
 const navigationItems = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Connections", href: "/connections" },
+  { label: "Users", href: "/users" },
   { label: "Files", href: "/files" },
   { label: "Editor", href: "/editor" },
   { label: "Services", href: "/services" },

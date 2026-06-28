@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import { NextResponse } from "next/server";
 import { writeAuditLog } from "@/lib/audit-log";
 import {
@@ -10,13 +9,13 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const require = createRequire(import.meta.url);
-
-function loadPamAuthenticator() {
-  const packageName = "authenticate-pam";
-
+async function loadPamAuthenticator() {
   try {
-    return require(packageName);
+    const { createRequire } = await import("node:module");
+    const requireNativePackage = createRequire(import.meta.url);
+    const packageName = "authenticate" + "-pam";
+
+    return requireNativePackage.call(null, packageName);
   } catch (error) {
     console.error("Unable to load authenticate-pam:", error);
     return null;
@@ -28,7 +27,7 @@ async function authenticateUbuntuUser(username, password) {
     return { ok: false, reason: "platform" };
   }
 
-  const pamModule = loadPamAuthenticator();
+  const pamModule = await loadPamAuthenticator();
   const authenticate = pamModule?.default?.authenticate ?? pamModule?.authenticate;
 
   if (!authenticate) {

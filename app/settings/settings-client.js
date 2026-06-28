@@ -51,7 +51,70 @@ function ListField({ label, value, onChange }) {
   );
 }
 
+function ServiceSelectField({ availableServices, label, onChange, value }) {
+  const selected = new Set(value || []);
+  const options = [...new Set([...availableServices, ...value])]
+    .sort()
+    .filter((service) => !selected.has(service));
+
+  function addService(service) {
+    if (service) {
+      onChange([...value, service].sort());
+    }
+  }
+
+  function removeService(service) {
+    onChange(value.filter((item) => item !== service));
+  }
+
+  return (
+    <div className="grid gap-3">
+      <label className="grid gap-2">
+        <span className="text-sm font-bold text-white/72">{label}</span>
+        <select
+          className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition focus:border-[#e95420]"
+          onChange={(event) => {
+            addService(event.target.value);
+            event.target.value = "";
+          }}
+          value=""
+        >
+          <option value="">Select service...</option>
+          {options.map((service) => (
+            <option className="bg-[#111111]" key={service} value={service}>
+              {service}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="flex min-h-24 flex-wrap content-start gap-2 rounded-md border border-white/10 bg-black/18 p-3">
+        {value.length > 0 ? (
+          value.map((service) => (
+            <span
+              className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/8 px-3 py-2 text-sm font-semibold text-white/72"
+              key={service}
+            >
+              {service}
+              <button
+                className="rounded bg-white/10 px-2 py-0.5 text-xs text-white transition hover:bg-white/20"
+                onClick={() => removeService(service)}
+                type="button"
+              >
+                Remove
+              </button>
+            </span>
+          ))
+        ) : (
+          <span className="text-sm text-white/42">No services selected.</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsClient({ username }) {
+  const [availableServices, setAvailableServices] = useState([]);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState(null);
@@ -70,10 +133,11 @@ export default function SettingsClient({ username }) {
       }
 
       setService({
-        controllableServices: listToText(payload.service.controllableServices),
-        monitoredServices: listToText(payload.service.monitoredServices),
-        restartableServices: listToText(payload.service.restartableServices),
+        controllableServices: payload.service.controllableServices || [],
+        monitoredServices: payload.service.monitoredServices || [],
+        restartableServices: payload.service.restartableServices || [],
       });
+      setAvailableServices(payload.availableServices || []);
       setSecurity({
         autoAppBlock: Boolean(payload.security.autoAppBlock),
         autoBlockPrivateIps: Boolean(payload.security.autoBlockPrivateIps),
@@ -109,9 +173,9 @@ export default function SettingsClient({ username }) {
             whitelistIps: textToList(security.whitelistIps),
           },
           service: {
-            controllableServices: textToList(service.controllableServices),
-            monitoredServices: textToList(service.monitoredServices),
-            restartableServices: textToList(service.restartableServices),
+            controllableServices: service.controllableServices,
+            monitoredServices: service.monitoredServices,
+            restartableServices: service.restartableServices,
           },
         }),
       });
@@ -194,17 +258,20 @@ export default function SettingsClient({ username }) {
                   <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
                     <h2 className="text-xl font-bold tracking-normal">Service Allowlists</h2>
                     <div className="mt-5 grid gap-5 xl:grid-cols-3">
-                      <ListField
+                      <ServiceSelectField
+                        availableServices={availableServices}
                         label="Monitored Services"
                         onChange={(value) => setService({ ...service, monitoredServices: value })}
                         value={service.monitoredServices}
                       />
-                      <ListField
+                      <ServiceSelectField
+                        availableServices={availableServices}
                         label="Restartable Services"
                         onChange={(value) => setService({ ...service, restartableServices: value })}
                         value={service.restartableServices}
                       />
-                      <ListField
+                      <ServiceSelectField
+                        availableServices={availableServices}
                         label="Controllable Services"
                         onChange={(value) =>
                           setService({ ...service, controllableServices: value })

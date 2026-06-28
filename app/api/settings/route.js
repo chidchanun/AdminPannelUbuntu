@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { getSessionFromRequest, isAdminUser } from "@/lib/access-control";
 import { getServiceSettings, updateServiceSettings } from "@/lib/admin-settings";
 import { writeAuditLog } from "@/lib/audit-log";
@@ -6,6 +8,9 @@ import { getSecuritySettings, updateSecuritySettings } from "@/lib/security-bloc
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const execFileAsync = promisify(execFile);
+const SYSTEMCTL_PATH = process.env.SYSTEMCTL_PATH || "systemctl";
 
 function requireAdmin(request) {
   const session = getSessionFromRequest(request);
@@ -23,6 +28,31 @@ function requireAdmin(request) {
   return { session };
 }
 
+async function listAvailableServices() {
+  if (process.platform !== "linux") {
+    return [];
+  }
+
+  try {
+    const { stdout } = await execFileAsync(SYSTEMCTL_PATH, [
+      "list-units",
+      "--type=service",
+      "--all",
+      "--no-pager",
+      "--plain",
+      "--legend=false",
+    ]);
+
+    return stdout
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/)[0])
+      .filter((name) => name?.endsWith(".service"))
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
 export async function GET(request) {
   const { error } = requireAdmin(request);
 
@@ -30,12 +60,14 @@ export async function GET(request) {
     return error;
   }
 
-  const [service, security] = await Promise.all([
+  const [availableServices, service, security] = await Promise.all([
+    listAvailableServices(),
     getServiceSettings(),
     getSecuritySettings(),
   ]);
 
   return NextResponse.json({
+    availableServices,
     security,
     service,
     updatedAt: new Date().toISOString(),

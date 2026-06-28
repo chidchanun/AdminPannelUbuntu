@@ -669,6 +669,31 @@ export default function SecurityClient({ username }) {
 
               <section className="grid gap-5 xl:grid-cols-2">
                 <div className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
+                  <h2 className="text-xl font-bold tracking-normal">Live Path Scan Buckets</h2>
+                  <div className="mt-4 grid gap-3">
+                    {(data?.scans || []).slice(0, 12).map((item) => (
+                      <div className="rounded-md bg-black/20 px-4 py-3" key={item.ip}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="break-all font-bold">{item.ip}</p>
+                            <p className="mt-1 text-sm text-white/60">
+                              {item.count} suspicious paths | expires {formatTime(item.expiresAtIso)}
+                            </p>
+                            <p className="mt-1 break-words text-xs leading-5 text-white/40">
+                              {(item.examples || []).join(", ")}
+                            </p>
+                          </div>
+                          <BlockButtons ip={item.ip} onAction={changeBlock} />
+                        </div>
+                      </div>
+                    ))}
+                    {(data?.scans || []).length === 0 ? (
+                      <EmptyState>No live path scan buckets.</EmptyState>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
                   <h2 className="text-xl font-bold tracking-normal">Recent Security Events</h2>
                   <div className="mt-4 grid gap-3">
                     {(data?.events || []).slice(0, 12).map((event, index) => (

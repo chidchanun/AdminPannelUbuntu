@@ -68,11 +68,11 @@ function ServiceSelectField({ availableServices, label, onChange, value }) {
   }
 
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 gap-3">
       <label className="grid gap-2">
         <span className="text-sm font-bold text-white/72">{label}</span>
         <select
-          className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition focus:border-[#e95420]"
+          className="h-11 min-w-0 w-full rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition focus:border-[#e95420]"
           onChange={(event) => {
             addService(event.target.value);
             event.target.value = "";
@@ -88,16 +88,16 @@ function ServiceSelectField({ availableServices, label, onChange, value }) {
         </select>
       </label>
 
-      <div className="flex min-h-24 flex-wrap content-start gap-2 rounded-md border border-white/10 bg-black/18 p-3">
+      <div className="flex min-h-24 min-w-0 flex-wrap content-start gap-2 rounded-md border border-white/10 bg-black/18 p-3">
         {value.length > 0 ? (
           value.map((service) => (
             <span
-              className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/8 px-3 py-2 text-sm font-semibold text-white/72"
+              className="inline-flex max-w-full min-w-0 items-center gap-2 rounded-md border border-white/10 bg-white/8 px-3 py-2 text-sm font-semibold text-white/72"
               key={service}
             >
-              {service}
+              <span className="min-w-0 truncate">{service}</span>
               <button
-                className="rounded bg-white/10 px-2 py-0.5 text-xs text-white transition hover:bg-white/20"
+                className="shrink-0 rounded bg-white/10 px-2 py-0.5 text-xs text-white transition hover:bg-white/20"
                 onClick={() => removeService(service)}
                 type="button"
               >
@@ -255,9 +255,9 @@ export default function SettingsClient({ username }) {
                 </p>
               ) : (
                 <>
-                  <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                  <section className="min-w-0 rounded-lg border border-white/10 bg-[#111111]/70 p-5">
                     <h2 className="text-xl font-bold tracking-normal">Service Allowlists</h2>
-                    <div className="mt-5 grid gap-5 xl:grid-cols-3">
+                    <div className="mt-5 grid min-w-0 gap-5 2xl:grid-cols-3">
                       <ServiceSelectField
                         availableServices={availableServices}
                         label="Monitored Services"

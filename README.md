@@ -15,6 +15,8 @@ Next.js admin panel for managing an Ubuntu server from a browser. It uses the sa
 - Users page for `/etc/passwd`, active shell sessions, and recent failed SSH logins
 - Notification center for audit, security, and health notices
 - HTTP/TCP health checks for local apps and server ports
+- PM2 process and log views for apps running on the same server
+- System backup/restore for admin settings, security blocks, and optional health history/audit export
 
 ## Requirements
 
@@ -98,6 +100,8 @@ AUDIT_LOG_PATH=/var/log/ubuntu-admin/audit.log
 ```
 
 The Settings page can export/import a JSON backup of service allowlists and security settings.
+It also includes `System Backup` for admin settings, health targets, security blocks, and optional
+health history. Audit logs can be exported for review but are not overwritten during restore.
 
 The web editor creates a backup before every successful save. By default backups are stored beside the file under `.admin-backups/`. Override this with:
 
@@ -170,6 +174,8 @@ npm run start
 ```
 
 Run behind HTTPS and a reverse proxy. Forward `Host` and `X-Forwarded-Proto` so redirects and secure cookies use the public URL.
+
+For a full Ubuntu deployment walkthrough with PAM, systemd, nginx, HTTPS, PM2, sudoers, and backup notes, see [DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ## Security Notes
 

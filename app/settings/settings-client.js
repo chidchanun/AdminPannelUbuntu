@@ -143,6 +143,12 @@ export default function SettingsClient({ username }) {
   const [security, setSecurity] = useState(null);
   const [service, setService] = useState(null);
   const [roles, setRoles] = useState(null);
+  const [isSystemBackupBusy, setIsSystemBackupBusy] = useState(false);
+  const [systemBackup, setSystemBackup] = useState({
+    includeAudit: false,
+    includeHistory: true,
+    restoreHistory: false,
+  });
 
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
@@ -272,6 +278,81 @@ export default function SettingsClient({ username }) {
       setMessage(null);
     } finally {
       event.target.value = "";
+    }
+  }
+
+  async function exportSystemBackup() {
+    setIsSystemBackupBusy(true);
+
+    try {
+      const params = new URLSearchParams({
+        includeAudit: systemBackup.includeAudit ? "1" : "0",
+        includeHistory: systemBackup.includeHistory ? "1" : "0",
+      });
+      const response = await fetch(`/api/system-backup?${params.toString()}`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+
+        throw new Error(payload.error || `System backup API returned ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = "ubuntu-admin-system-backup.json";
+      link.click();
+      URL.revokeObjectURL(url);
+      setMessage("System backup exported.");
+      setError(null);
+    } catch (backupError) {
+      setError(backupError.message);
+      setMessage(null);
+    } finally {
+      setIsSystemBackupBusy(false);
+    }
+  }
+
+  async function importSystemBackup(event) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    setIsSystemBackupBusy(true);
+
+    try {
+      const backup = JSON.parse(await file.text());
+      const response = await fetch("/api/system-backup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          backup,
+          restoreHistory: systemBackup.restoreHistory,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `System backup API returned ${response.status}`);
+      }
+
+      setMessage(`System backup restored: ${payload.restored.join(", ")}.`);
+      setError(null);
+      await loadSettings();
+    } catch (restoreError) {
+      setError(restoreError.message);
+      setMessage(null);
+    } finally {
+      event.target.value = "";
+      setIsSystemBackupBusy(false);
     }
   }
 
@@ -448,6 +529,78 @@ export default function SettingsClient({ username }) {
                           />
                         </label>
                       </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-xl font-bold tracking-normal">System Backup</h2>
+                        <p className="mt-2 max-w-3xl text-sm leading-6 text-white/56">
+                          Export service settings, health targets, security blocks, and optional
+                          history into one file. Audit logs can be exported for review but are not
+                          overwritten during restore.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          className="h-10 rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isSystemBackupBusy}
+                          onClick={exportSystemBackup}
+                          type="button"
+                        >
+                          Export System
+                        </button>
+                        <label
+                          className={`grid h-10 place-items-center rounded-md border border-white/14 px-4 text-sm font-semibold text-white transition ${
+                            isSystemBackupBusy
+                              ? "cursor-not-allowed opacity-50"
+                              : "cursor-pointer hover:bg-white/10"
+                          }`}
+                        >
+                          Restore System
+                          <input
+                            accept="application/json,.json"
+                            className="sr-only"
+                            disabled={isSystemBackupBusy}
+                            onChange={importSystemBackup}
+                            type="file"
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <ToggleButton
+                        checked={systemBackup.includeHistory}
+                        label="Export Health History"
+                        onToggle={() =>
+                          setSystemBackup({
+                            ...systemBackup,
+                            includeHistory: !systemBackup.includeHistory,
+                          })
+                        }
+                      />
+                      <ToggleButton
+                        checked={systemBackup.includeAudit}
+                        label="Export Audit Log"
+                        onToggle={() =>
+                          setSystemBackup({
+                            ...systemBackup,
+                            includeAudit: !systemBackup.includeAudit,
+                          })
+                        }
+                      />
+                      <ToggleButton
+                        checked={systemBackup.restoreHistory}
+                        label="Restore Health History"
+                        onToggle={() =>
+                          setSystemBackup({
+                            ...systemBackup,
+                            restoreHistory: !systemBackup.restoreHistory,
+                          })
+                        }
+                      />
                     </div>
                   </section>
 

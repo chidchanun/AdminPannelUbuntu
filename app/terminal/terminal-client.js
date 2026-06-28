@@ -14,6 +14,21 @@ export default function TerminalClient({ username }) {
   const [shellPath, setShellPath] = useState("");
 
   const terminalRef = useRef(null);
+  const inputRef = useRef(null);
+  const terminalEndRef = useRef(null);
+
+  const focusTerminal = useCallback(() => {
+    requestAnimationFrame(() => {
+      terminalEndRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+
+      inputRef.current?.focus({
+        preventScroll: true,
+      });
+    });
+  }, []);
 
   const formatLinuxPath = useCallback(
     (path) => {
@@ -64,10 +79,8 @@ export default function TerminalClient({ username }) {
   }, [loadTerminal]);
 
   useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
-    }
-  }, [history, error, isRunning]);
+    focusTerminal();
+  }, [history, error, isRunning, cwd, focusTerminal]);
 
   async function runCommand(event) {
     event.preventDefault();
@@ -196,7 +209,10 @@ export default function TerminalClient({ username }) {
                       <button
                         className="font-mono text-[#729fcf] underline-offset-2 hover:text-[#8cc4ff] hover:underline"
                         key={item}
-                        onClick={() => setCommand(item)}
+                        onClick={() => {
+                          setCommand(item);
+                          focusTerminal();
+                        }}
                         type="button"
                       >
                         {item}
@@ -226,9 +242,8 @@ export default function TerminalClient({ username }) {
                     </p>
 
                     <pre
-                      className={`mt-1 whitespace-pre-wrap font-mono ${
-                        item.ok ? "text-[#eeeeec]" : "text-[#ef2929]"
-                      }`}
+                      className={`mt-1 whitespace-pre-wrap font-mono ${item.ok ? "text-[#eeeeec]" : "text-[#ef2929]"
+                        }`}
                     >
                       {item.output || "(no output)"}
                     </pre>
@@ -246,6 +261,7 @@ export default function TerminalClient({ username }) {
                 </span>
 
                 <input
+                  ref={inputRef}
                   autoFocus
                   className="min-w-0 flex-1 border-none bg-transparent font-mono text-[#eeeeec] caret-white outline-none disabled:opacity-60"
                   disabled={isRunning}
@@ -260,6 +276,8 @@ export default function TerminalClient({ username }) {
                   </span>
                 ) : null}
               </form>
+
+              <div ref={terminalEndRef} />
             </div>
           </div>
         </section>

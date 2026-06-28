@@ -10,8 +10,7 @@ const navigationItems = [
   { label: "Services", href: "/services" },
   { label: "Security", href: "/security" },
   { label: "Audit", href: "/audit" },
-  { label: "Notices", href: "#" },
-  { label: "Settings", href: "#" },
+  { label: "Settings", href: "/settings" },
 ];
 
 export default function AppSidebar({ activeItem, helperText, username }) {
@@ -34,14 +33,6 @@ export default function AppSidebar({ activeItem, helperText, username }) {
             const className = isActive
               ? "rounded-md bg-[#e95420] px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#e95420]/20"
               : "rounded-md px-3 py-2.5 text-sm font-semibold text-white/66 transition hover:bg-white/8 hover:text-white";
-
-            if (item.href === "#") {
-              return (
-                <a className={className} href={item.href} key={item.label}>
-                  {item.label}
-                </a>
-              );
-            }
 
             return (
               <Link className={className} href={item.href} key={item.label}>
@@ -71,21 +62,19 @@ export function AppMobileNav({ activeItem }) {
         <span className="font-bold">Ubuntu Admin Panel</span>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {navigationItems
-          .filter((item) => item.href !== "#")
-          .map((item) => (
-            <Link
-              className={`shrink-0 rounded-md px-3 py-2 text-sm font-semibold ${
-                item.label === activeItem
-                  ? "bg-[#e95420] text-white"
-                  : "bg-white/8 text-white/68"
-              }`}
-              href={item.href}
-              key={item.label}
-            >
-              {item.label}
-            </Link>
-          ))}
+        {navigationItems.map((item) => (
+          <Link
+            className={`shrink-0 rounded-md px-3 py-2 text-sm font-semibold ${
+              item.label === activeItem
+                ? "bg-[#e95420] text-white"
+                : "bg-white/8 text-white/68"
+            }`}
+            href={item.href}
+            key={item.label}
+          >
+            {item.label}
+          </Link>
+        ))}
       </div>
     </nav>
   );

@@ -6,6 +6,7 @@ import {
   canRestartServices,
   getSessionFromRequest,
 } from "@/lib/access-control";
+import { getServiceSettings } from "@/lib/admin-settings";
 import { writeAuditLog } from "@/lib/audit-log";
 
 export const runtime = "nodejs";
@@ -18,27 +19,16 @@ const SUDO_PATH = process.env.SUDO_PATH || "sudo";
 const JOURNALCTL_PATH = process.env.JOURNALCTL_PATH || "journalctl";
 const SERVICE_ACTIONS = new Set(["disable", "enable", "restart", "start", "stop"]);
 
-function parseList(value) {
-  return String(value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+function getServiceNames(settings) {
+  return settings.restartableServices;
 }
 
-function getServiceNames() {
-  const restartableServices = parseList(process.env.RESTARTABLE_SERVICES);
-
-  if (restartableServices.length > 0) {
-    return restartableServices;
-  }
-
-  return parseList(process.env.MONITORED_SERVICES || "ssh,nginx,mysql");
+function getMonitoredServiceNames(settings) {
+  return settings.monitoredServices;
 }
 
-function getControllableServiceNames() {
-  const controllableServices = parseList(process.env.CONTROLLABLE_SERVICES);
-
-  return controllableServices.length > 0 ? controllableServices : getServiceNames();
+function getControllableServiceNames(settings) {
+  return settings.controllableServices;
 }
 
 function normalizeServiceName(name) {
@@ -51,11 +41,11 @@ function normalizeUnitName(name) {
   return normalized ? `${normalized}.service` : "";
 }
 
-function resolveAllowedService(serviceName) {
+function resolveAllowedService(serviceName, settings) {
   const normalized = normalizeServiceName(serviceName);
 
   return (
-    getServiceNames().find((allowedService) => {
+    getServiceNames(settings).find((allowedService) => {
       const allowedNormalized = normalizeServiceName(allowedService);
 
       return allowedService === serviceName || allowedNormalized === normalized;
@@ -63,11 +53,11 @@ function resolveAllowedService(serviceName) {
   );
 }
 
-function resolveControllableService(serviceName) {
+function resolveControllableService(serviceName, settings) {
   const normalized = normalizeServiceName(serviceName);
 
   return (
-    getControllableServiceNames().find((allowedService) => {
+    getControllableServiceNames(settings).find((allowedService) => {
       const allowedNormalized = normalizeServiceName(allowedService);
 
       return allowedService === serviceName || allowedNormalized === normalized;
@@ -75,9 +65,9 @@ function resolveControllableService(serviceName) {
   );
 }
 
-function enrichService(service) {
-  const controlTarget = resolveControllableService(service.name);
-  const restartTarget = resolveAllowedService(service.name);
+function enrichService(service, settings) {
+  const controlTarget = resolveControllableService(service.name, settings);
+  const restartTarget = resolveAllowedService(service.name, settings);
 
   return {
     ...service,
@@ -88,7 +78,7 @@ function enrichService(service) {
   };
 }
 
-async function readServiceStatus(name) {
+async function readServiceStatus(name, settings) {
   try {
     const { stdout } = await execFileAsync(SYSTEMCTL_PATH, ["is-active", name]);
 
@@ -96,7 +86,7 @@ async function readServiceStatus(name) {
       description: "",
       load: "loaded",
       name,
-      ...enrichService({ name }),
+      ...enrichService({ name }, settings),
       subState: stdout.trim() || "unknown",
       state: stdout.trim() || "unknown",
       ok: stdout.trim() === "active",
@@ -106,7 +96,7 @@ async function readServiceStatus(name) {
       description: "",
       load: "unknown",
       name,
-      ...enrichService({ name }),
+      ...enrichService({ name }, settings),
       subState: String(error.stdout || "").trim() || "failed",
       state: String(error.stdout || "").trim() || "failed",
       ok: false,
@@ -114,7 +104,7 @@ async function readServiceStatus(name) {
   }
 }
 
-function parseServiceLine(line) {
+function parseServiceLine(line, settings) {
   const columns = line.trim().split(/\s+/);
   const [name, load, active, subState, ...descriptionParts] = columns;
 
@@ -122,19 +112,24 @@ function parseServiceLine(line) {
     return null;
   }
 
-  return enrichService({
-    description: descriptionParts.join(" "),
-    load,
-    name,
-    ok: active === "active",
-    state: active,
-    subState,
-  });
+  return enrichService(
+    {
+      description: descriptionParts.join(" "),
+      load,
+      name,
+      ok: active === "active",
+      state: active,
+      subState,
+    },
+    settings,
+  );
 }
 
-async function listAllServices() {
+async function listAllServices(settings) {
   if (process.platform !== "linux") {
-    const services = await Promise.all(getServiceNames().map(readServiceStatus));
+    const services = await Promise.all(
+      getMonitoredServiceNames(settings).map((service) => readServiceStatus(service, settings)),
+    );
 
     return {
       error: "Listing all services requires Linux systemctl.",
@@ -153,14 +148,21 @@ async function listAllServices() {
     ]);
     const services = stdout
       .split("\n")
-      .map(parseServiceLine)
+      .map((line) => parseServiceLine(line, settings))
       .filter(Boolean)
       .sort((a, b) => a.name.localeCompare(b.name));
     const existingNames = new Set(services.map((service) => normalizeServiceName(service.name)));
-    const missingAllowlist = getServiceNames().filter(
+    const configuredServices = [
+      ...getMonitoredServiceNames(settings),
+      ...getServiceNames(settings),
+      ...getControllableServiceNames(settings),
+    ];
+    const missingAllowlist = configuredServices.filter(
       (serviceName) => !existingNames.has(normalizeServiceName(serviceName)),
     );
-    const missingServices = await Promise.all(missingAllowlist.map(readServiceStatus));
+    const missingServices = await Promise.all(
+      missingAllowlist.map((service) => readServiceStatus(service, settings)),
+    );
 
     return {
       error: null,
@@ -169,7 +171,9 @@ async function listAllServices() {
       ),
     };
   } catch (error) {
-    const services = await Promise.all(getServiceNames().map(readServiceStatus));
+    const services = await Promise.all(
+      getMonitoredServiceNames(settings).map((service) => readServiceStatus(service, settings)),
+    );
 
     return {
       error: error.message,
@@ -260,14 +264,15 @@ export async function GET(request) {
     });
   }
 
-  const result = await listAllServices();
+  const serviceSettings = await getServiceSettings();
+  const result = await listAllServices(serviceSettings);
   const active = result.services.filter((service) => service.state === "active").length;
   const failed = result.services.filter((service) => service.state === "failed").length;
   const inactive = result.services.filter((service) => service.state === "inactive").length;
 
   return NextResponse.json({
-    allowlist: getServiceNames(),
-    controlAllowlist: getControllableServiceNames(),
+    allowlist: getServiceNames(serviceSettings),
+    controlAllowlist: getControllableServiceNames(serviceSettings),
     error: result.error,
     summary: {
       active,
@@ -320,10 +325,11 @@ export async function POST(request) {
     return NextResponse.json({ error: "Service action permission denied." }, { status: 403 });
   }
 
+  const serviceSettings = await getServiceSettings();
   const allowedService =
     action === "restart"
-      ? resolveAllowedService(serviceName)
-      : resolveControllableService(serviceName);
+      ? resolveAllowedService(serviceName, serviceSettings)
+      : resolveControllableService(serviceName, serviceSettings);
 
   if (!allowedService) {
     await writeAuditLog({

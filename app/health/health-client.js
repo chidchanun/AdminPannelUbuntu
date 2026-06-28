@@ -11,6 +11,10 @@ export default function HealthClient({ username }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [labelInput, setLabelInput] = useState("");
+  const [message, setMessage] = useState(null);
+  const [urlInput, setUrlInput] = useState("");
 
   const loadHealth = useCallback(async () => {
     setIsLoading(true);
@@ -31,6 +35,78 @@ export default function HealthClient({ username }) {
       setIsLoading(false);
     }
   }, []);
+
+  async function addWebsite(event) {
+    event.preventDefault();
+    setIsSaving(true);
+
+    try {
+      const response = await fetch("/api/health-checks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "add-http",
+          label: labelInput,
+          url: urlInput,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Health API returned ${response.status}`);
+      }
+
+      setLabelInput("");
+      setUrlInput("");
+      setMessage("Website health check added.");
+      setError(null);
+      await loadHealth();
+    } catch (saveError) {
+      setError(saveError.message);
+      setMessage(null);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function removeTarget(target) {
+    if (target.source !== "settings") {
+      setError("Targets from environment variables cannot be removed from the web UI.");
+      setMessage(null);
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const response = await fetch("/api/health-checks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "remove",
+          id: target.id,
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Health API returned ${response.status}`);
+      }
+
+      setMessage(`Removed ${target.label}.`);
+      setError(null);
+      await loadHealth();
+    } catch (removeError) {
+      setError(removeError.message);
+      setMessage(null);
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   useEffect(() => {
     const timeout = setTimeout(loadHealth, 0);
@@ -90,6 +166,12 @@ export default function HealthClient({ username }) {
                 </section>
               ) : null}
 
+              {message ? (
+                <section className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 p-4">
+                  <p className="text-sm font-semibold text-emerald-100">{message}</p>
+                </section>
+              ) : null}
+
               <section className="grid gap-4 md:grid-cols-3">
                 <article className="rounded-lg border border-white/10 bg-white/[0.05] p-5">
                   <p className="text-sm font-semibold text-white/56">Configured</p>
@@ -103,6 +185,31 @@ export default function HealthClient({ username }) {
                   <p className="text-sm font-semibold text-white/56">Updated</p>
                   <p className="mt-2 text-base font-bold">{formatTime(data?.checkedAt)}</p>
                 </article>
+              </section>
+
+              <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
+                <h2 className="text-xl font-bold tracking-normal">Add Website</h2>
+                <form className="mt-5 grid gap-3 lg:grid-cols-[260px_1fr_auto]" onSubmit={addWebsite}>
+                  <input
+                    className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                    onChange={(event) => setLabelInput(event.target.value)}
+                    placeholder="Label"
+                    value={labelInput}
+                  />
+                  <input
+                    className="h-11 rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                    onChange={(event) => setUrlInput(event.target.value)}
+                    placeholder="https://example.com/health"
+                    value={urlInput}
+                  />
+                  <button
+                    className="h-11 rounded-md bg-[#e95420] px-5 text-sm font-bold text-white transition hover:bg-[#c34113] disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={isSaving || !labelInput.trim() || !urlInput.trim()}
+                    type="submit"
+                  >
+                    {isSaving ? "Saving" : "Add Website"}
+                  </button>
+                </form>
               </section>
 
               <section className="rounded-lg border border-white/10 bg-[#111111]/70 p-5">
@@ -129,6 +236,9 @@ export default function HealthClient({ username }) {
                         ) : null}
                       </div>
                       <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                        <span className="rounded-full bg-white/8 px-3 py-1 text-sm font-semibold text-white/50">
+                          {item.source === "env" ? "Env" : "Web"}
+                        </span>
                         <span
                           className={`rounded-full px-3 py-1 text-sm font-bold ${
                             item.ok
@@ -141,6 +251,16 @@ export default function HealthClient({ username }) {
                         <span className="rounded-full bg-white/8 px-3 py-1 text-sm font-semibold text-white/62">
                           {item.latencyMs}ms
                         </span>
+                        {item.source === "settings" ? (
+                          <button
+                            className="h-8 rounded-md border border-white/14 px-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isSaving}
+                            onClick={() => removeTarget(item)}
+                            type="button"
+                          >
+                            Remove
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   ))}

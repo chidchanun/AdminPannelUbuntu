@@ -118,6 +118,8 @@ HEALTH_TCP_TIMEOUT_MS=3000
 
 Each entry can be `Label|target` or just the target. Results appear in `/health` and unhealthy targets are included in `/notifications`.
 
+You can also add website checks from `/health`. Targets added in the UI are saved in `logs/admin-settings.json`; environment targets remain read-only in the UI.
+
 ## Development
 
 ```bash

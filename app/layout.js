@@ -1,5 +1,5 @@
 import "./globals.css";
-
+import "@xterm/xterm/css/xterm.css";
 export const metadata = {
   title: "Ubuntu Admin Panel",
   description: "Secure login for Ubuntu server administration",

@@ -4,150 +4,215 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import AppSidebar, { AppMobileNav } from "@/app/components/app-sidebar";
 
 export default function TerminalClient({ username }) {
-  const [allowedCommands, setAllowedCommands] = useState([]);
-  const [command, setCommand] = useState("uptime");
-  const [cwd, setCwd] = useState("");
-  const [error, setError] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [isRunning, setIsRunning] = useState(false);
-  const [shellEnabled, setShellEnabled] = useState(false);
-  const [shellPath, setShellPath] = useState("");
-
+  const terminalElementRef = useRef(null);
   const terminalRef = useRef(null);
-  const inputRef = useRef(null);
-  const terminalEndRef = useRef(null);
+  const fitAddonRef = useRef(null);
+  const socketRef = useRef(null);
 
-  const focusTerminal = useCallback(() => {
-    requestAnimationFrame(() => {
-      terminalEndRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-      });
+  const [status, setStatus] = useState("connecting");
+  const [error, setError] = useState("");
 
-      inputRef.current?.focus({
-        preventScroll: true,
-      });
-    });
-  }, []);
+  const resizeTerminal = useCallback(() => {
+    const terminal = terminalRef.current;
+    const fitAddon = fitAddonRef.current;
+    const socket = socketRef.current;
 
-  const formatLinuxPath = useCallback(
-    (path) => {
-      if (!path) return "~";
-
-      const safeUsername = username || "ubuntu";
-      const homePath = `/home/${safeUsername}`;
-
-      if (path === homePath) return "~";
-
-      if (path.startsWith(`${homePath}/`)) {
-        return path.replace(homePath, "~");
-      }
-
-      return path;
-    },
-    [username]
-  );
-
-  const getPrompt = useCallback(
-    (path) => `${username || "ubuntu"}@ubuntu:${formatLinuxPath(path)}$`,
-    [username, formatLinuxPath]
-  );
-
-  const loadTerminal = useCallback(async () => {
-    try {
-      const response = await fetch("/api/terminal", { cache: "no-store" });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error || `Terminal API returned ${response.status}`);
-      }
-
-      setAllowedCommands(payload.allowedCommands || []);
-      setCwd(payload.cwd || "");
-      setShellEnabled(Boolean(payload.shellEnabled));
-      setShellPath(payload.shellPath || "");
-      setError(null);
-    } catch (loadError) {
-      setError(loadError.message);
-    }
-  }, []);
-
-  useEffect(() => {
-    const timeout = setTimeout(loadTerminal, 0);
-
-    return () => clearTimeout(timeout);
-  }, [loadTerminal]);
-
-  useEffect(() => {
-    focusTerminal();
-  }, [history, error, isRunning, cwd, focusTerminal]);
-
-  async function runCommand(event) {
-    event.preventDefault();
-
-    if (!command.trim()) {
+    if (!terminal || !fitAddon) {
       return;
     }
 
-    const currentCommand = command.trim();
-    const currentPrompt = getPrompt(cwd);
-
-    setIsRunning(true);
-
     try {
-      const response = await fetch("/api/terminal", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ command: currentCommand }),
-      });
+      fitAddon.fit();
 
-      const payload = await response.json();
-      const nextCwd = payload.cwd || cwd;
-
-      if (payload.clear) {
-        setHistory([]);
-        setCommand("");
-        setCwd(nextCwd);
-        setError(null);
-        return;
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.send(
+          JSON.stringify({
+            type: "resize",
+            cols: terminal.cols,
+            rows: terminal.rows,
+          })
+        );
       }
+    } catch {
+      // ignore resize error
+    }
+  }, []);
 
-      setHistory((current) =>
-        [
-          ...current,
-          {
-            at: new Date().toISOString(),
-            command: currentCommand,
-            error: response.ok ? "" : payload.error,
-            output: payload.output || payload.error || "",
-            ok: response.ok,
-            prompt: currentPrompt,
-          },
-        ].slice(-60)
+  const runQuickCommand = useCallback((command) => {
+    const socket = socketRef.current;
+    const terminal = terminalRef.current;
+
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(
+        JSON.stringify({
+          type: "input",
+          data: `${command}\r`,
+        })
       );
 
-      if (nextCwd) {
-        setCwd(nextCwd);
-      }
-
-      if (!response.ok) {
-        setError(payload.error || `Terminal command returned ${response.status}`);
-      } else {
-        setError(null);
-        setCommand("");
-      }
-    } catch (runError) {
-      setError(runError.message);
-    } finally {
-      setIsRunning(false);
+      terminal?.focus();
     }
-  }
+  }, []);
 
-  const quickCommands = shellEnabled
-    ? ["uptime", "df -h", "free -h", "systemctl status nginx"]
-    : allowedCommands;
+  useEffect(() => {
+    let disposed = false;
+
+    async function startTerminal() {
+      try {
+        const [{ Terminal }, { FitAddon }] = await Promise.all([
+          import("@xterm/xterm"),
+          import("@xterm/addon-fit"),
+        ]);
+
+        if (disposed || !terminalElementRef.current) {
+          return;
+        }
+
+        const terminal = new Terminal({
+          cursorBlink: true,
+          cursorStyle: "block",
+          fontFamily:
+            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+          fontSize: 14,
+          lineHeight: 1.25,
+          scrollback: 5000,
+          convertEol: false,
+          allowProposedApi: true,
+          theme: {
+            background: "#300a24",
+            foreground: "#eeeeec",
+            cursor: "#eeeeec",
+            selectionBackground: "#75507b",
+            black: "#2e3436",
+            red: "#cc0000",
+            green: "#4e9a06",
+            yellow: "#c4a000",
+            blue: "#3465a4",
+            magenta: "#75507b",
+            cyan: "#06989a",
+            white: "#d3d7cf",
+            brightBlack: "#555753",
+            brightRed: "#ef2929",
+            brightGreen: "#8ae234",
+            brightYellow: "#fce94f",
+            brightBlue: "#729fcf",
+            brightMagenta: "#ad7fa8",
+            brightCyan: "#34e2e2",
+            brightWhite: "#eeeeec",
+          },
+        });
+
+        const fitAddon = new FitAddon();
+
+        terminal.loadAddon(fitAddon);
+        terminal.open(terminalElementRef.current);
+
+        terminalRef.current = terminal;
+        fitAddonRef.current = fitAddon;
+
+        terminal.writeln("Connecting to Ubuntu terminal...");
+        terminal.writeln("");
+
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const socket = new WebSocket(
+          `${protocol}://${window.location.host}/api/terminal/pty`
+        );
+
+        socketRef.current = socket;
+
+        socket.addEventListener("open", () => {
+          if (disposed) {
+            return;
+          }
+
+          setStatus("connected");
+          setError("");
+
+          terminal.clear();
+          resizeTerminal();
+          terminal.focus();
+        });
+
+        socket.addEventListener("message", (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+
+            if (payload.type === "output") {
+              terminal.write(payload.data);
+            }
+          } catch {
+            terminal.write(String(event.data));
+          }
+        });
+
+        socket.addEventListener("close", () => {
+          if (disposed) {
+            return;
+          }
+
+          setStatus("disconnected");
+          terminal.writeln("");
+          terminal.writeln("\x1b[31mConnection closed.\x1b[0m");
+        });
+
+        socket.addEventListener("error", () => {
+          if (disposed) {
+            return;
+          }
+
+          setStatus("error");
+          setError("Cannot connect to PTY WebSocket.");
+          terminal.writeln("");
+          terminal.writeln("\x1b[31mWebSocket connection error.\x1b[0m");
+        });
+
+        terminal.onData((data) => {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(
+              JSON.stringify({
+                type: "input",
+                data,
+              })
+            );
+          }
+        });
+
+        window.addEventListener("resize", resizeTerminal);
+
+        setTimeout(() => {
+          resizeTerminal();
+          terminal.focus();
+        }, 100);
+      } catch (startError) {
+        setStatus("error");
+        setError(startError.message || "Failed to start terminal.");
+      }
+    }
+
+    startTerminal();
+
+    return () => {
+      disposed = true;
+
+      window.removeEventListener("resize", resizeTerminal);
+
+      try {
+        socketRef.current?.close();
+      } catch {
+        // ignore
+      }
+
+      try {
+        terminalRef.current?.dispose();
+      } catch {
+        // ignore
+      }
+
+      socketRef.current = null;
+      terminalRef.current = null;
+      fitAddonRef.current = null;
+    };
+  }, [resizeTerminal]);
 
   return (
     <main className="min-h-screen bg-[#1e1e1e] text-white">
@@ -156,12 +221,12 @@ export default function TerminalClient({ username }) {
       <div className="grid min-h-screen lg:grid-cols-[280px_minmax(0,1fr)]">
         <AppSidebar
           activeItem="Terminal"
-          helperText="Ubuntu terminal command runner with audit logging."
+          helperText="Interactive Ubuntu terminal with PTY support."
           username={username}
         />
 
         <section className="flex min-h-screen items-center justify-center bg-[#2c001e] p-4 sm:p-6 lg:p-8">
-          <div className="w-full max-w-6xl overflow-hidden rounded-lg border border-black/40 bg-[#300a24] shadow-2xl">
+          <div className="w-full max-w-7xl overflow-hidden rounded-lg border border-black/40 bg-[#300a24] shadow-2xl">
             <div className="flex h-10 items-center justify-between bg-[#3d3d3d] px-3">
               <div className="flex items-center gap-2">
                 <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
@@ -170,7 +235,7 @@ export default function TerminalClient({ username }) {
               </div>
 
               <div className="select-none text-sm font-semibold text-white/85">
-                {username || "ubuntu"}@ubuntu: {formatLinuxPath(cwd)}
+                {username || "ubuntu"}@ubuntu: Interactive Terminal
               </div>
 
               <form action="/api/logout" method="post">
@@ -183,101 +248,49 @@ export default function TerminalClient({ username }) {
               </form>
             </div>
 
-            <div
-              ref={terminalRef}
-              className="h-[calc(100vh-110px)] min-h-[560px] overflow-auto bg-[#300a24] p-4 font-mono text-sm leading-6 text-[#eeeeec]"
-            >
-              <p className="text-[#eeeeec]">
-                Welcome to Ubuntu Terminal
-              </p>
+            <div className="border-b border-white/10 bg-[#2a0820] px-4 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs text-white/60">
+                  Status:{" "}
+                  <span
+                    className={
+                      status === "connected"
+                        ? "font-semibold text-[#8ae234]"
+                        : status === "error"
+                          ? "font-semibold text-[#ef2929]"
+                          : "font-semibold text-[#fce94f]"
+                    }
+                  >
+                    {status}
+                  </span>
 
-              <p className="text-[#eeeeec]/70">
-                Current shell mode:{" "}
-                <span className="text-[#fce94f]">
-                  {shellEnabled
-                    ? `Full shell (${shellPath || "default"})`
-                    : "Controlled allowlist"}
-                </span>
-              </p>
+                  {error ? (
+                    <span className="ml-3 text-[#ef2929]">{error}</span>
+                  ) : null}
+                </div>
 
-              {quickCommands.length > 0 ? (
-                <>
-                  <br />
-                  <p className="text-[#eeeeec]/70">Quick commands:</p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {quickCommands.map((item) => (
+                <div className="flex flex-wrap gap-2">
+                  {["pwd", "ls -la", "pm2 list", "df -h", "free -h"].map(
+                    (item) => (
                       <button
-                        className="font-mono text-[#729fcf] underline-offset-2 hover:text-[#8cc4ff] hover:underline"
+                        className="rounded border border-white/10 bg-white/5 px-2 py-1 font-mono text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
                         key={item}
-                        onClick={() => {
-                          setCommand(item);
-                          focusTerminal();
-                        }}
+                        onClick={() => runQuickCommand(item)}
                         type="button"
                       >
                         {item}
                       </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
 
-              {error ? (
-                <>
-                  <br />
-                  <p className="text-[#ef2929]">terminal error: {error}</p>
-                </>
-              ) : null}
-
-              <br />
-
-              {history.length > 0 ? (
-                history.map((item) => (
-                  <div className="mb-3" key={`${item.at}-${item.command}`}>
-                    <p>
-                      <span className="font-bold text-[#8ae234]">
-                        {item.prompt}
-                      </span>{" "}
-                      <span className="text-[#eeeeec]">{item.command}</span>
-                    </p>
-
-                    <pre
-                      className={`mt-1 whitespace-pre-wrap font-mono ${item.ok ? "text-[#eeeeec]" : "text-[#ef2929]"
-                        }`}
-                    >
-                      {item.output || "(no output)"}
-                    </pre>
-                  </div>
-                ))
-              ) : (
-                <p className="text-[#eeeeec]/60">
-                  Type a command and press Enter.
-                </p>
-              )}
-
-              <form className="mt-2 flex items-center gap-2" onSubmit={runCommand}>
-                <span className="shrink-0 font-bold text-[#8ae234]">
-                  {getPrompt(cwd)}
-                </span>
-
-                <input
-                  ref={inputRef}
-                  autoFocus
-                  className="min-w-0 flex-1 border-none bg-transparent font-mono text-[#eeeeec] caret-white outline-none disabled:opacity-60"
-                  disabled={isRunning}
-                  onChange={(event) => setCommand(event.target.value)}
-                  spellCheck={false}
-                  value={command}
-                />
-
-                {isRunning ? (
-                  <span className="animate-pulse text-[#fce94f]">
-                    running...
-                  </span>
-                ) : null}
-              </form>
-
-              <div ref={terminalEndRef} />
+            <div
+              className="h-[calc(100vh-132px)] min-h-[560px] bg-[#300a24] p-2"
+              onClick={() => terminalRef.current?.focus()}
+            >
+              <div ref={terminalElementRef} className="h-full w-full" />
             </div>
           </div>
         </section>

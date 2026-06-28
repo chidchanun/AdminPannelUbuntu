@@ -36,6 +36,7 @@ export default function HealthClient({ username }) {
   const [isSaving, setIsSaving] = useState(false);
   const [labelInput, setLabelInput] = useState("");
   const [logModal, setLogModal] = useState(null);
+  const [logSearch, setLogSearch] = useState("");
   const [logType, setLogType] = useState("none");
   const [message, setMessage] = useState(null);
   const [pm2Name, setPm2Name] = useState("");
@@ -101,6 +102,7 @@ export default function HealthClient({ username }) {
   }
 
   async function viewLogs(target) {
+    setLogSearch("");
     setLogModal({
       isLoading: true,
       label: target.label,
@@ -164,6 +166,43 @@ export default function HealthClient({ username }) {
       await loadHealth();
     } catch (removeError) {
       setError(removeError.message);
+      setMessage(null);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function changeMute(target, minutes = 30) {
+    setIsSaving(true);
+
+    try {
+      const response = await fetch("/api/health-checks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: target.mute ? "unmute" : "mute",
+          id: target.id,
+          minutes,
+          reason: "maintenance",
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || `Health API returned ${response.status}`);
+      }
+
+      setMessage(
+        target.mute
+          ? `${target.label} alerts resumed.`
+          : `${target.label} alerts muted for ${minutes} minutes.`,
+      );
+      setError(null);
+      await loadHealth();
+    } catch (muteError) {
+      setError(muteError.message);
       setMessage(null);
     } finally {
       setIsSaving(false);
@@ -429,6 +468,11 @@ export default function HealthClient({ username }) {
                         <span className="rounded-full bg-white/8 px-3 py-1 text-sm font-semibold text-white/62">
                           {item.latencyMs}ms
                         </span>
+                        {item.mute ? (
+                          <span className="rounded-full bg-[#ffb088]/12 px-3 py-1 text-sm font-semibold text-[#ffd4bf]">
+                            Muted until {formatShortTime(item.mute.mutedUntil)}
+                          </span>
+                        ) : null}
                         {item.logType === "pm2" && item.pm2Name ? (
                           <>
                             <button
@@ -458,6 +502,14 @@ export default function HealthClient({ username }) {
                             Remove
                           </button>
                         ) : null}
+                        <button
+                          className="h-8 rounded-md border border-white/14 px-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isSaving}
+                          onClick={() => changeMute(item, 30)}
+                          type="button"
+                        >
+                          {item.mute ? "Unmute" : "Mute 30m"}
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -546,8 +598,21 @@ export default function HealthClient({ username }) {
                   {logModal.error}
                 </p>
               ) : null}
+              <input
+                className="mb-4 h-10 w-full rounded-md border border-white/10 bg-black/24 px-4 text-sm text-white outline-none transition placeholder:text-white/35 focus:border-[#e95420]"
+                onChange={(event) => setLogSearch(event.target.value)}
+                placeholder="Search logs..."
+                value={logSearch}
+              />
               <pre className="min-h-72 overflow-auto rounded-md border border-white/10 bg-black/45 p-4 font-mono text-xs leading-5 text-white/72">
-                {logModal.output || ""}
+                {(logModal.output || "")
+                  .split("\n")
+                  .filter((line) =>
+                    logSearch.trim()
+                      ? line.toLowerCase().includes(logSearch.trim().toLowerCase())
+                      : true,
+                  )
+                  .join("\n")}
               </pre>
             </div>
           </section>

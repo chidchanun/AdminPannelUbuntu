@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSessionFromRequest, isAdminUser } from "@/lib/access-control";
-import { addHealthTarget, removeHealthTarget } from "@/lib/admin-settings";
+import {
+  addHealthTarget,
+  getHealthSettings,
+  muteHealthTarget,
+  removeHealthTarget,
+  unmuteHealthTarget,
+} from "@/lib/admin-settings";
 import { writeAuditLog } from "@/lib/audit-log";
 import { runHealthChecks } from "@/lib/health-checks";
 import {
@@ -22,11 +28,17 @@ export async function GET(request) {
 
   const snapshot = await runHealthChecks();
   const history = await recordHealthSnapshot(snapshot);
+  const healthSettings = await getHealthSettings();
 
   return NextResponse.json({
     ...snapshot,
-    alerts: buildHealthAlerts({ history, snapshot }),
+    alerts: buildHealthAlerts({
+      history,
+      mutedTargets: healthSettings.mutedTargets,
+      snapshot,
+    }),
     history: groupHealthHistory(history),
+    mutedTargets: healthSettings.mutedTargets,
     rules: getHealthAlertRules(),
   });
 }
@@ -79,6 +91,35 @@ export async function POST(request) {
       await writeAuditLog({
         action: "health.target.remove",
         id: body.id,
+        user: session.username,
+      });
+
+      return NextResponse.json({ health, ok: true });
+    }
+
+    if (body?.action === "mute") {
+      const health = await muteHealthTarget({
+        minutes: body.minutes,
+        reason: body.reason,
+        targetId: body.id,
+      });
+
+      await writeAuditLog({
+        action: "health.target.mute",
+        minutes: body.minutes,
+        targetId: body.id,
+        user: session.username,
+      });
+
+      return NextResponse.json({ health, ok: true });
+    }
+
+    if (body?.action === "unmute") {
+      const health = await unmuteHealthTarget(body.id);
+
+      await writeAuditLog({
+        action: "health.target.unmute",
+        targetId: body.id,
         user: session.username,
       });
 

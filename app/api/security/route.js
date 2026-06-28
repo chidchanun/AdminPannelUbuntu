@@ -7,16 +7,6 @@ import {
   normalizeFirewallTarget,
   unblockFirewallIp,
 } from "@/lib/firewall-control";
-import {
-  addWhitelistEntry,
-  loadPersistentBlocks,
-  persistBlock,
-  persistCurrentBlocks,
-  removeWhitelistEntry,
-  removePersistentBlock,
-  getSecuritySettings,
-  updateSecuritySettings,
-} from "@/lib/security-block-store";
 import { getServerSecuritySnapshot } from "@/lib/server-security-monitor";
 import { getClientIp, getThreatSnapshot, isWhitelistedIp } from "@/lib/threat-guard";
 
@@ -37,6 +27,10 @@ function requireAdmin(request) {
   }
 
   return { session };
+}
+
+function getSecurityStore() {
+  return import("@/lib/security-block-store");
 }
 
 function isPrivateOrLocalIp(ip) {
@@ -92,7 +86,7 @@ function collectAutoBlockCandidates(server, settings) {
   });
 }
 
-async function applyAutoBlocks(server, settings) {
+async function applyAutoBlocks(server, settings, securityStore) {
   const existingBlocks = new Set(getThreatSnapshot().blocked.map((block) => block.ip));
   const candidates = collectAutoBlockCandidates(server, settings).filter(
     (candidate) => !existingBlocks.has(candidate.ip),
@@ -105,7 +99,7 @@ async function applyAutoBlocks(server, settings) {
 
   for (const candidate of candidates) {
     if (settings.autoAppBlock) {
-      await persistBlock(candidate.ip, candidate.reason, {
+      await securityStore.persistBlock(candidate.ip, candidate.reason, {
         ...candidate.details,
         source: "auto security monitor",
       });
@@ -163,13 +157,15 @@ export async function GET(request) {
     return error;
   }
 
-  await loadPersistentBlocks();
-  const settings = await getSecuritySettings();
+  const securityStore = await getSecurityStore();
+
+  await securityStore.loadPersistentBlocks();
+  const settings = await securityStore.getSecuritySettings();
   const server = await getServerSecuritySnapshot();
-  const autoBlocks = await applyAutoBlocks(server, settings);
+  const autoBlocks = await applyAutoBlocks(server, settings, securityStore);
   const rawClientIp = getClientIp(request);
   const clientIp = normalizeFirewallTarget(rawClientIp) || rawClientIp;
-  await persistCurrentBlocks();
+  await securityStore.persistCurrentBlocks();
 
   return NextResponse.json({
     ...getThreatSnapshot(),
@@ -204,7 +200,8 @@ export async function POST(request) {
   const action = body?.action;
 
   if (action === "settings") {
-    const settings = await updateSecuritySettings(body?.settings || {});
+    const securityStore = await getSecurityStore();
+    const settings = await securityStore.updateSecuritySettings(body?.settings || {});
 
     await writeAuditLog({
       action: "security.settings.update",
@@ -222,8 +219,9 @@ export async function POST(request) {
       return NextResponse.json({ error: "Valid IP or CIDR is required." }, { status: 400 });
     }
 
-    const settings = await addWhitelistEntry(entry);
-    const removed = await removePersistentBlock(entry);
+    const securityStore = await getSecurityStore();
+    const settings = await securityStore.addWhitelistEntry(entry);
+    const removed = await securityStore.removePersistentBlock(entry);
 
     await writeAuditLog({
       action: "security.whitelist.add",
@@ -242,7 +240,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "Whitelist entry is required." }, { status: 400 });
     }
 
-    const settings = await removeWhitelistEntry(entry);
+    const securityStore = await getSecurityStore();
+    const settings = await securityStore.removeWhitelistEntry(entry);
 
     await writeAuditLog({
       action: "security.whitelist.remove",
@@ -260,13 +259,15 @@ export async function POST(request) {
   }
 
   if (action === "block") {
-    await getSecuritySettings();
+    const securityStore = await getSecurityStore();
+
+    await securityStore.getSecuritySettings();
 
     if (isWhitelistedIp(ip)) {
       return NextResponse.json({ error: "IP is whitelisted and cannot be blocked." }, { status: 409 });
     }
 
-    await persistBlock(ip, "manual block", {
+    await securityStore.persistBlock(ip, "manual block", {
       source: "security page",
       user: session.username,
     });
@@ -281,7 +282,8 @@ export async function POST(request) {
   }
 
   if (action === "unblock") {
-    const removed = await removePersistentBlock(ip);
+    const securityStore = await getSecurityStore();
+    const removed = await securityStore.removePersistentBlock(ip);
 
     await writeAuditLog({
       action: "security.ip.unblock",
@@ -299,7 +301,9 @@ export async function POST(request) {
     }
 
     try {
-      await getSecuritySettings();
+      const securityStore = await getSecurityStore();
+
+      await securityStore.getSecuritySettings();
 
       if (isWhitelistedIp(ip)) {
         return NextResponse.json(
@@ -310,7 +314,7 @@ export async function POST(request) {
 
       const result = await blockFirewallIp(ip);
 
-      await persistBlock(ip, "firewall block requested", {
+      await securityStore.persistBlock(ip, "firewall block requested", {
         source: "security page",
         user: session.username,
       });
@@ -342,7 +346,8 @@ export async function POST(request) {
 
     try {
       const result = await unblockFirewallIp(ip);
-      const removed = await removePersistentBlock(ip);
+      const securityStore = await getSecurityStore();
+      const removed = await securityStore.removePersistentBlock(ip);
 
       await writeAuditLog({
         action: "security.firewall.unblock",

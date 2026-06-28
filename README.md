@@ -141,6 +141,8 @@ HEALTH_HISTORY_MAX_AGE_HOURS=48
 HEALTH_HISTORY_MAX_ENTRIES=2500
 ```
 
+Use `Mute 30m` on a Health target during planned maintenance. Muted targets keep recording history, but health alerts and notifications are suppressed until the mute expires.
+
 ## Development
 
 ```bash

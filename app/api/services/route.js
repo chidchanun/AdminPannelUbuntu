@@ -6,7 +6,6 @@ import {
   canRestartServices,
   getSessionFromRequest,
 } from "@/lib/access-control";
-import { getServiceSettings } from "@/lib/admin-settings";
 import { writeAuditLog } from "@/lib/audit-log";
 
 export const runtime = "nodejs";
@@ -18,6 +17,10 @@ const SYSTEMCTL_PATH = process.env.SYSTEMCTL_PATH || "systemctl";
 const SUDO_PATH = process.env.SUDO_PATH || "sudo";
 const JOURNALCTL_PATH = process.env.JOURNALCTL_PATH || "journalctl";
 const SERVICE_ACTIONS = new Set(["disable", "enable", "restart", "start", "stop"]);
+
+function getAdminSettingsStore() {
+  return import("@/lib/admin-settings");
+}
 
 function getServiceNames(settings) {
   return settings.restartableServices;
@@ -264,6 +267,7 @@ export async function GET(request) {
     });
   }
 
+  const { getServiceSettings } = await getAdminSettingsStore();
   const serviceSettings = await getServiceSettings();
   const result = await listAllServices(serviceSettings);
   const active = result.services.filter((service) => service.state === "active").length;
@@ -325,6 +329,7 @@ export async function POST(request) {
     return NextResponse.json({ error: "Service action permission denied." }, { status: 403 });
   }
 
+  const { getServiceSettings } = await getAdminSettingsStore();
   const serviceSettings = await getServiceSettings();
   const allowedService =
     action === "restart"

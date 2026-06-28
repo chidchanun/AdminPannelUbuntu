@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { getSessionFromRequest, isAdminUser } from "@/lib/access-control";
-import { getServiceSettings, updateServiceSettings } from "@/lib/admin-settings";
 import { writeAuditLog } from "@/lib/audit-log";
-import { getSecuritySettings, updateSecuritySettings } from "@/lib/security-block-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +44,10 @@ function requireAdmin(request) {
   return { session };
 }
 
+function getAdminSettingsStore() {
+  return import("@/lib/admin-settings");
+}
+
 async function listAvailableServices() {
   if (process.platform !== "linux") {
     return [];
@@ -78,6 +80,10 @@ export async function GET(request) {
     return error;
   }
 
+  const [{ getServiceSettings }, { getSecuritySettings }] = await Promise.all([
+    getAdminSettingsStore(),
+    import("@/lib/security-block-store"),
+  ]);
   const [availableServices, service, security] = await Promise.all([
     listAvailableServices(),
     getServiceSettings(),
@@ -111,10 +117,14 @@ export async function POST(request) {
   const updates = {};
 
   if (body?.service) {
+    const { updateServiceSettings } = await getAdminSettingsStore();
+
     updates.service = await updateServiceSettings(body.service);
   }
 
   if (body?.security) {
+    const { updateSecuritySettings } = await import("@/lib/security-block-store");
+
     updates.security = await updateSecuritySettings(body.security);
   }
 

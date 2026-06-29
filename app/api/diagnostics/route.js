@@ -133,19 +133,6 @@ async function buildSecurityRecommendations(checks, request) {
     );
   }
 
-  if (
-    !process.env.PACKAGE_INSTALL_ALLOW_ANY &&
-    !process.env.PACKAGE_INSTALL_ALLOWLIST
-  ) {
-    recommendations.push(
-      buildRecommendation({
-        detail:
-          "Set PACKAGE_INSTALL_ALLOWLIST for safe package installs, or PACKAGE_INSTALL_ALLOW_ANY=true if you intentionally allow any apt package.",
-        title: "Configure package install policy",
-      }),
-    );
-  }
-
   if (!process.env.TERMINAL_ALLOWED_COMMANDS) {
     recommendations.push(
       buildRecommendation({

@@ -114,38 +114,6 @@ The Diagnostics page should warn about risky configuration, including:
 - terminal container network enabled when not required
 - terminal mount points broader than necessary
 
-## Package Installer
-
-The `/packages` page installs apt packages through a controlled API, not a full shell.
-
-Recommended production defaults:
-
-```bash
-PACKAGE_INSTALL_USERS=ChidchanunServer
-PACKAGE_INSTALL_ALLOWLIST=htop,curl,git
-```
-
-The install action runs:
-
-```bash
-sudo -n apt-get install -y --no-install-recommends <package>
-```
-
-Add narrow sudoers rules for the Node process user. Use `PACKAGE_INSTALL_ALLOW_ANY=true` only when you accept that admins can install any valid apt package name.
-
-## Update + Upgrade
-
-The Updates page can run `apt-get update` followed by `apt-get upgrade -y`.
-
-The Node process user needs non-interactive sudo for:
-
-```bash
-sudo -n apt-get update
-sudo -n apt-get upgrade -y
-```
-
-Keep update/upgrade access narrow. Review audit logs after upgrades.
-
 ## Web Terminal
 
 The recommended `/terminal` design is an interactive terminal with isolation:

@@ -1,6 +1,6 @@
 # Ubuntu Admin Panel
 
-Next.js admin panel for managing an Ubuntu server from a browser. It uses the same Linux user/password through PAM, then shows server status, services, security events, files, editor, audit logs, settings, system users, package updates, PM2 logs, and a web terminal.
+Next.js admin panel for managing an Ubuntu server from a browser. It uses the same Linux user/password through PAM, then shows server status, services, security events, files, editor, audit logs, settings, system users, PM2 logs, and a web terminal.
 
 The recommended terminal mode uses `xterm.js` in the browser, WebSocket transport, `node-pty`, and a Docker sandbox. This allows interactive programs such as `nano`, `vim`, and `top` while limiting the terminal to a mounted workspace such as `/home/ChidchanunServer` instead of exposing the host root filesystem directly.
 
@@ -22,8 +22,6 @@ The recommended terminal mode uses `xterm.js` in the browser, WebSocket transpor
 - HTTP/TCP health checks for local apps and server ports
 - PM2 process and log views for apps running on the same server
 - System backup/restore for admin settings, security blocks, and optional health history/audit export
-- Ubuntu Update Center for package update, security update, and reboot-required visibility
-- Controlled package installer for apt packages with allowlist support
 - Interactive Ubuntu-style Web Terminal using `xterm.js`, WebSocket, `node-pty`, and an optional Docker sandbox
 
 ## Requirements
@@ -310,24 +308,6 @@ PM2 process name: erp-web
 
 The Health page shows a `View Logs` button that reads recent output with `pm2 logs <name> --lines 200 --nostream`. Set `PM2_PATH` or `PM2_LOG_LINES` if your server needs different values.
 
-## Package Installer
-
-Package installation is available from `/packages`. By default it requires a package allowlist:
-
-```bash
-PACKAGE_INSTALL_USERS=yourUbuntuUser
-PACKAGE_INSTALL_ALLOWLIST=htop,curl,git
-```
-
-Use `PACKAGE_INSTALL_ALLOW_ANY=true` only if you intentionally allow admins to install any valid apt package name.
-
-The Updates page can run a one-click update and upgrade:
-
-```bash
-sudo -n apt-get update
-sudo -n apt-get upgrade -y
-```
-
 ## Development
 
 Because the interactive terminal requires WebSocket upgrade handling, use the custom server:
@@ -381,5 +361,5 @@ For production hardening notes covering webhook tests, 2FA, audit retention, ter
 - Prefer Docker sandbox terminal over host root shell access.
 - Do not mount `/`, `/etc`, `/var`, or `/root` into the terminal container unless you intentionally accept the risk.
 - Use the whitelist before enabling aggressive auto-block rules.
-- Review audit logs after service, file, firewall, settings, package, and terminal actions.
+- Review audit logs after service, file, firewall, settings, and terminal actions.
 - Do not expose this panel publicly without HTTPS, 2FA, and network restrictions.

@@ -1,4 +1,6 @@
 const { createServer } = require("node:http");
+const { execFile } = require("node:child_process");
+const { randomUUID } = require("node:crypto");
 const next = require("next");
 const { WebSocketServer, WebSocket } = require("ws");
 const pty = require("node-pty");
@@ -45,6 +47,74 @@ async function verifyTerminalAccess(req) {
   return response.json();
 }
 
+function getDockerTerminalArgs(containerName) {
+  const image = process.env.TERMINAL_CONTAINER_IMAGE || "admin-panel-terminal:chidchanun";
+  const username = process.env.TERMINAL_CONTAINER_USERNAME || "ChidchanunServer";
+  const homeDir = process.env.TERMINAL_CONTAINER_HOME || `/home/${username}`;
+  const mountDir = process.env.TERMINAL_CONTAINER_MOUNT || homeDir;
+  const network = process.env.TERMINAL_CONTAINER_NETWORK || "none";
+
+  return [
+    "run",
+    "--rm",
+    "-i",
+    "-t",
+
+    "--name",
+    containerName,
+
+    "--hostname",
+    "ubuntu",
+
+    "--network",
+    network,
+
+    "--workdir",
+    homeDir,
+
+    "--user",
+    `${process.getuid?.() || 1000}:${process.getgid?.() || 1000}`,
+
+    "--mount",
+    `type=bind,source=${mountDir},target=${homeDir}`,
+
+    "--read-only",
+    "--tmpfs",
+    "/tmp:rw,nosuid,nodev,noexec,size=128m",
+    "--tmpfs",
+    "/run:rw,nosuid,nodev,noexec,size=64m",
+
+    "--cap-drop",
+    "ALL",
+
+    "--security-opt",
+    "no-new-privileges",
+
+    "--pids-limit",
+    "256",
+
+    "--memory",
+    "512m",
+
+    "--cpus",
+    "1",
+
+    "-e",
+    "TERM=xterm-256color",
+
+    "-e",
+    `USER=${username}`,
+
+    "-e",
+    `HOME=${homeDir}`,
+
+    image,
+
+    "/bin/bash",
+    "-l",
+  ];
+}
+
 app.prepare().then(() => {
   const server = createServer((req, res) => {
     handle(req, res);
@@ -82,18 +152,18 @@ app.prepare().then(() => {
     }
   });
 
-  wss.on("connection", (ws, req, terminalInfo) => {
-    const shell =
-      process.env.TERMINAL_SHELL ||
-      (process.platform === "win32" ? "cmd.exe" : "/bin/bash");
+  wss.on("connection", (ws) => {
+    const containerName = `admin-panel-terminal-${randomUUID()
+      .replaceAll("-", "")
+      .slice(0, 16)}`;
 
-    const cwd = terminalInfo.cwd || process.env.HOME || process.cwd();
+    const dockerArgs = getDockerTerminalArgs(containerName);
 
-    const ptyProcess = pty.spawn(shell, [], {
+    const ptyProcess = pty.spawn("docker", dockerArgs, {
       name: "xterm-256color",
       cols: 120,
       rows: 34,
-      cwd,
+      cwd: process.env.TERMINAL_CONTAINER_MOUNT || "/home/ChidchanunServer",
       env: {
         ...process.env,
         TERM: "xterm-256color",
@@ -101,7 +171,7 @@ app.prepare().then(() => {
       },
     });
 
-    console.log(`[PTY] started shell=${shell} cwd=${cwd}`);
+    console.log(`[PTY] Docker terminal started: ${containerName}`);
 
     ptyProcess.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -136,18 +206,23 @@ app.prepare().then(() => {
       }
     });
 
-    ws.on("close", () => {
+    function cleanupContainer() {
       try {
         ptyProcess.kill();
       } catch {
         // ignore
       }
 
-      console.log("[PTY] closed");
-    });
+      execFile("docker", ["rm", "-f", containerName], () => {
+        console.log(`[PTY] Docker terminal removed: ${containerName}`);
+      });
+    }
+
+    ws.on("close", cleanupContainer);
 
     ws.on("error", (error) => {
       console.error("PTY websocket error:", error);
+      cleanupContainer();
     });
   });
 
